@@ -1,0 +1,158 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ImageUpload } from "./image-upload";
+import { toast } from "sonner";
+
+interface Category { id: string; name: string }
+
+interface ProductFormProps {
+  categories: Category[];
+  initialData?: {
+    id: string;
+    name: string;
+    categoryId: string;
+    unit: string;
+    minStock: number;
+    imageUrl: string | null;
+  };
+}
+
+const UNITS = ["unidades", "litros", "kg", "cajas", "botellas", "porciones", "gramos"];
+
+export function ProductForm({ categories, initialData }: ProductFormProps) {
+  const router = useRouter();
+  const isEdit = !!initialData;
+
+  const [name, setName] = useState(initialData?.name ?? "");
+  const [categoryId, setCategoryId] = useState(initialData?.categoryId ?? "");
+  const [unit, setUnit] = useState(initialData?.unit ?? "");
+  const [minStock, setMinStock] = useState(initialData?.minStock?.toString() ?? "0");
+  const [imageUrl, setImageUrl] = useState(initialData?.imageUrl ?? "");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !categoryId || !unit) {
+      toast.error("Nombre, categoría y unidad son requeridos");
+      return;
+    }
+
+    setLoading(true);
+
+    const payload = {
+      name: name.trim(),
+      categoryId,
+      unit,
+      minStock: parseFloat(minStock) || 0,
+      imageUrl: imageUrl || null,
+    };
+
+    const res = await fetch(
+      isEdit ? `/api/products/${initialData.id}` : "/api/products",
+      {
+        method: isEdit ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }
+    );
+
+    setLoading(false);
+
+    if (res.ok) {
+      toast.success(isEdit ? "Producto actualizado" : "Producto creado");
+      router.push("/productos");
+      router.refresh();
+    } else {
+      const data = await res.json() as { error?: string };
+      toast.error(data.error ?? "Error al guardar");
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="space-y-1.5">
+        <Label htmlFor="name">Nombre del producto *</Label>
+        <Input
+          id="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Ej: Ron Blanco"
+          required
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label>Categoría *</Label>
+          <Select value={categoryId} onValueChange={setCategoryId} required>
+            <SelectTrigger>
+              <SelectValue placeholder="Seleccionar..." />
+            </SelectTrigger>
+            <SelectContent>
+              {categories.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>Unidad *</Label>
+          <Select value={unit} onValueChange={setUnit} required>
+            <SelectTrigger>
+              <SelectValue placeholder="Seleccionar..." />
+            </SelectTrigger>
+            <SelectContent>
+              {UNITS.map((u) => (
+                <SelectItem key={u} value={u}>{u}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="minStock">Stock mínimo</Label>
+        <Input
+          id="minStock"
+          type="number"
+          min="0"
+          step="0.5"
+          value={minStock}
+          onChange={(e) => setMinStock(e.target.value)}
+          placeholder="0"
+        />
+        <p className="text-xs text-slate-400">Se generará una alerta cuando el stock baje de este valor</p>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Foto del producto (opcional)</Label>
+        <ImageUpload value={imageUrl} onChange={setImageUrl} />
+      </div>
+
+      <div className="flex gap-3 pt-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => router.push("/productos")}
+          disabled={loading}
+        >
+          Cancelar
+        </Button>
+        <Button
+          type="submit"
+          className="bg-blue-600 hover:bg-blue-700"
+          disabled={loading}
+        >
+          {loading ? "Guardando..." : isEdit ? "Guardar cambios" : "Crear producto"}
+        </Button>
+      </div>
+    </form>
+  );
+}

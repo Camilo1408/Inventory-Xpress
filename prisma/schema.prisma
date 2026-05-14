@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+}
+
+model Product {
+  id           String          @id @default(cuid())
+  categoryId   String
+  category     Category        @relation(fields: [categoryId], references: [id])
+  name         String
+  unit         String
+  currentStock Float           @default(0)
+  minStock     Float           @default(0)
+  imageUrl     String?
+  active       Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  movements    StockMovement[]
+
+  @@index([categoryId])
+}
+
+model StockMovement {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  type      String
+  quantity  Float
+  notes     String?
+  userId    String
+  userName  String
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Solo presente en modo standalone
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  name         String?
+  role         String   @default("EMPLOYEE")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
