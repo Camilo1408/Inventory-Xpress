@@ -44,10 +44,12 @@ const standaloneOnlyItems = [
 export function Sidebar({ alertCount, isStandalone, nominaUrl, role, inventoryAccess }: SidebarProps) {
   const pathname = usePathname();
   const isSuperAdmin = role === "SUPERADMIN";
+  const isAdmin = role === "ADMIN";
+  const canManageAll = isSuperAdmin || isAdmin;
 
   const navItems = [
     ...baseNavItems,
-    ...(isSuperAdmin ? adminOnlyItems : []),
+    ...(canManageAll ? adminOnlyItems : []),
     ...(isStandalone && isSuperAdmin ? standaloneOnlyItems : []),
   ];
 

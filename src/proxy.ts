@@ -23,6 +23,7 @@ export default auth((req) => {
 
   if (
     session.user.role !== "SUPERADMIN" &&
+    session.user.role !== "ADMIN" &&
     !session.user.inventoryAccess
   ) {
     return Response.redirect(new URL("/unauthorized", req.url));
