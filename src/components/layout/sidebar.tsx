@@ -11,6 +11,7 @@ import {
   Tags,
   Users,
   ChevronLeft,
+  ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -19,14 +20,20 @@ interface SidebarProps {
   alertCount: number;
   isStandalone: boolean;
   nominaUrl?: string;
+  role?: string;
+  inventoryAccess?: boolean;
 }
 
-const navItems = [
+const baseNavItems = [
   { href: "/", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/productos", icon: Package, label: "Productos" },
   { href: "/movimientos", icon: ArrowLeftRight, label: "Movimientos" },
+  { href: "/inventario-diario", icon: ClipboardList, label: "Inventario Diario" },
   { href: "/alertas", icon: Bell, label: "Alertas" },
   { href: "/reportes", icon: BarChart3, label: "Reportes" },
+];
+
+const adminOnlyItems = [
   { href: "/admin/categorias", icon: Tags, label: "Categorías" },
 ];
 
@@ -34,8 +41,15 @@ const standaloneOnlyItems = [
   { href: "/admin/usuarios", icon: Users, label: "Usuarios" },
 ];
 
-export function Sidebar({ alertCount, isStandalone, nominaUrl }: SidebarProps) {
+export function Sidebar({ alertCount, isStandalone, nominaUrl, role, inventoryAccess }: SidebarProps) {
   const pathname = usePathname();
+  const isSuperAdmin = role === "SUPERADMIN";
+
+  const navItems = [
+    ...baseNavItems,
+    ...(isSuperAdmin ? adminOnlyItems : []),
+    ...(isStandalone && isSuperAdmin ? standaloneOnlyItems : []),
+  ];
 
   return (
     <aside className="w-60 min-h-screen bg-white border-r border-slate-200 flex flex-col shrink-0">
@@ -67,25 +81,6 @@ export function Sidebar({ alertCount, isStandalone, nominaUrl }: SidebarProps) {
                   {alertCount}
                 </Badge>
               )}
-            </Link>
-          );
-        })}
-
-        {isStandalone && standaloneOnlyItems.map((item) => {
-          const isActive = pathname.startsWith(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-blue-50 text-blue-700"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-              )}
-            >
-              <item.icon className="w-4 h-4 shrink-0" />
-              <span>{item.label}</span>
             </Link>
           );
         })}

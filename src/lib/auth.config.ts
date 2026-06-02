@@ -21,7 +21,7 @@ export const authConfig: NextAuthConfig = {
       session.user.username = token.username as string;
       session.user.role = token.role as string;
       session.user.tenantId = token.tenantId as string;
-      session.user.inventoryAccess = token.inventoryAccess as boolean;
+      session.user.inventoryAccess = (token.inventoryAccess as boolean) ?? false;
       return session;
     },
   },

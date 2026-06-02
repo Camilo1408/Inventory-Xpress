@@ -19,8 +19,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className={`${inter.variable} h-full`}>
-      <body className="min-h-full bg-[#F8FAFC]">
+    <html lang="es" className={`${inter.variable} h-full`} suppressHydrationWarning>
+      <head>
+        <script
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var o=new MutationObserver(function(m){m.forEach(function(r){if(r.type==='attributes'&&r.attributeName.indexOf('bis_')===0){r.target.removeAttribute(r.attributeName)}})});o.observe(document.documentElement,{attributes:true,subtree:true,attributeFilter:['bis_skin_checked','bis_register']})}catch(e){}})()`,
+          }}
+        />
+      </head>
+      <body className="min-h-full bg-[#F8FAFC]" suppressHydrationWarning>
         {children}
         <Toaster richColors position="top-right" />
       </body>

@@ -27,6 +27,8 @@ export default async function DashboardLayout({
         alertCount={alertCount}
         isStandalone={isStandalone}
         nominaUrl={nominaUrl}
+        role={session.user.role}
+        inventoryAccess={session.user.inventoryAccess}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header

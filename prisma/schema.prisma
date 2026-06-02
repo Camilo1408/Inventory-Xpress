@@ -17,18 +17,19 @@ model Category {
 }
 
 model Product {
-  id           String          @id @default(cuid())
+  id           String               @id @default(cuid())
   categoryId   String
-  category     Category        @relation(fields: [categoryId], references: [id])
+  category     Category             @relation(fields: [categoryId], references: [id])
   name         String
   unit         String
-  currentStock Float           @default(0)
-  minStock     Float           @default(0)
+  currentStock Float                @default(0)
+  minStock     Float                @default(0)
   imageUrl     String?
-  active       Boolean         @default(true)
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  active       Boolean              @default(true)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
   movements    StockMovement[]
+  dailyItems   DailyInventoryItem[]
 
   @@index([categoryId])
 }
@@ -47,6 +48,36 @@ model StockMovement {
   @@index([productId])
   @@index([userId])
   @@index([createdAt])
+}
+
+model DailyInventory {
+  id        String               @id @default(cuid())
+  date      String               // "YYYY-MM-DD"
+  status    String               @default("open") // "open" | "closed"
+  userId    String
+  userName  String
+  closedAt  DateTime?
+  closedBy  String?
+  createdAt DateTime             @default(now())
+  items     DailyInventoryItem[]
+
+  @@unique([date])
+  @@index([date])
+}
+
+model DailyInventoryItem {
+  id               String         @id @default(cuid())
+  dailyInventoryId String
+  dailyInventory   DailyInventory @relation(fields: [dailyInventoryId], references: [id], onDelete: Cascade)
+  productId        String
+  product          Product        @relation(fields: [productId], references: [id])
+  initialCount     Float
+  finalCount       Float?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([dailyInventoryId, productId])
+  @@index([dailyInventoryId])
 }
 
 // Solo presente en modo standalone
