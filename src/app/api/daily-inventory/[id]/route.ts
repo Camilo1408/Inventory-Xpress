@@ -2,14 +2,15 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { canDoStockCount } from "@/lib/permissions";
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 
-const closeSchema = z.object({
-  finalCounts: z.array(z.object({
-    productId: z.string().min(1),
-    finalCount: z.number().min(0),
-  })).min(1),
-});
+interface FinalCountItem {
+  productId: string;
+  finalCount: number;
+}
+
+interface CloseBody {
+  finalCounts?: unknown;
+}
 
 /** PATCH /api/daily-inventory/[id] — registrar conteos finales y cerrar */
 export async function PATCH(
@@ -22,10 +23,18 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const body = await req.json();
-  const parsed = closeSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Datos inválidos", details: parsed.error.flatten() }, { status: 400 });
+  const body = await req.json() as CloseBody;
+
+  if (!Array.isArray(body.finalCounts) || body.finalCounts.length === 0) {
+    return NextResponse.json({ error: "finalCounts es requerido y debe tener al menos un elemento" }, { status: 400 });
+  }
+
+  const finalCounts = body.finalCounts as FinalCountItem[];
+  const invalid = finalCounts.some(
+    (fc) => typeof fc.productId !== "string" || typeof fc.finalCount !== "number" || fc.finalCount < 0
+  );
+  if (invalid) {
+    return NextResponse.json({ error: "Datos inválidos en finalCounts" }, { status: 400 });
   }
 
   const inventory = await prisma.dailyInventory.findUnique({
@@ -38,13 +47,11 @@ export async function PATCH(
     return NextResponse.json({ error: "Este inventario ya está cerrado" }, { status: 409 });
   }
 
-  const { finalCounts } = parsed.data;
-
   // Actualizar cada item con su conteo final
   await Promise.all(
-    finalCounts.map((fc) => {
+    finalCounts.map((fc: FinalCountItem) => {
       const item = inventory.items.find((i) => i.productId === fc.productId);
-      if (!item) return Promise.resolve();
+      if (!item) return Promise.resolve(null);
       return prisma.dailyInventoryItem.update({
         where: { id: item.id },
         data: { finalCount: fc.finalCount },
@@ -58,7 +65,7 @@ export async function PATCH(
     data: {
       status: "closed",
       closedAt: new Date(),
-      closedBy: session.user.name ?? session.user.username ?? "Usuario",
+      closedBy: session.user.name ?? session.user.username,
     },
     include: {
       items: {
@@ -81,10 +88,10 @@ export async function PATCH(
   });
 
   const itemsWithCalc = closed.items.map((item) => {
-    const prods = movements.filter((m) => m.productId === item.productId);
-    const entries    = prods.filter((m) => m.type === "ENTRY").reduce((s, m) => s + Math.abs(m.quantity), 0);
-    const exits      = prods.filter((m) => m.type === "EXIT").reduce((s, m) => s + Math.abs(m.quantity), 0);
-    const expected   = item.initialCount + entries - exits;
+    const prods    = movements.filter((m) => m.productId === item.productId);
+    const entries  = prods.filter((m) => m.type === "ENTRY").reduce((s, m) => s + Math.abs(m.quantity), 0);
+    const exits    = prods.filter((m) => m.type === "EXIT").reduce((s, m) => s + Math.abs(m.quantity), 0);
+    const expected = item.initialCount + entries - exits;
     const discrepancy = item.finalCount !== null ? item.finalCount - expected : null;
     return { ...item, entries, exits, expected, discrepancy };
   });

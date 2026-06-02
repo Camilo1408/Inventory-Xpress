@@ -2,15 +2,16 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { canDoStockCount } from "@/lib/permissions";
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 
-const createSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  items: z.array(z.object({
-    productId: z.string().min(1),
-    initialCount: z.number().min(0),
-  })).min(1),
-});
+interface CreateItem {
+  productId: string;
+  initialCount: number;
+}
+
+interface CreateBody {
+  date?: unknown;
+  items?: unknown;
+}
 
 /** GET /api/daily-inventory?date=YYYY-MM-DD  (omitir = hoy) */
 export async function GET(req: NextRequest) {
@@ -34,7 +35,6 @@ export async function GET(req: NextRequest) {
 
   if (!inventory) return NextResponse.json({ inventory: null });
 
-  // Calcular entradas y salidas del día para cada producto
   const dayStart = new Date(`${date}T00:00:00.000Z`);
   const dayEnd   = new Date(`${date}T23:59:59.999Z`);
 
@@ -48,9 +48,9 @@ export async function GET(req: NextRequest) {
   });
 
   const itemsWithCalc = inventory.items.map((item) => {
-    const prods = movements.filter((m) => m.productId === item.productId);
-    const entries = prods.filter((m) => m.type === "ENTRY").reduce((s, m) => s + Math.abs(m.quantity), 0);
-    const exits   = prods.filter((m) => m.type === "EXIT").reduce((s, m) => s + Math.abs(m.quantity), 0);
+    const prods    = movements.filter((m) => m.productId === item.productId);
+    const entries  = prods.filter((m) => m.type === "ENTRY").reduce((s, m) => s + Math.abs(m.quantity), 0);
+    const exits    = prods.filter((m) => m.type === "EXIT").reduce((s, m) => s + Math.abs(m.quantity), 0);
     const expected = item.initialCount + entries - exits;
     const discrepancy = item.finalCount !== null ? item.finalCount - expected : null;
     return { ...item, entries, exits, expected, discrepancy };
@@ -66,22 +66,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const body = await req.json();
-  const parsed = createSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Datos inválidos", details: parsed.error.flatten() }, { status: 400 });
+  const body = await req.json() as CreateBody;
+
+  if (
+    typeof body.date !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(body.date) ||
+    !Array.isArray(body.items) ||
+    body.items.length === 0
+  ) {
+    return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
   }
 
-  const { date, items } = parsed.data;
+  const date  = body.date;
+  const items = body.items as CreateItem[];
 
-  // Verificar que no exista ya un inventario para esa fecha
+  const invalid = items.some(
+    (i: CreateItem) => typeof i.productId !== "string" || typeof i.initialCount !== "number" || i.initialCount < 0
+  );
+  if (invalid) {
+    return NextResponse.json({ error: "Datos inválidos en items" }, { status: 400 });
+  }
+
   const existing = await prisma.dailyInventory.findUnique({ where: { date } });
   if (existing) {
     return NextResponse.json({ error: "Ya existe un inventario para esta fecha" }, { status: 409 });
   }
 
-  // Verificar que todos los productos existan y estén activos
-  const productIds = items.map((i) => i.productId);
+  const productIds = items.map((i: CreateItem) => i.productId);
   const products = await prisma.product.findMany({
     where: { id: { in: productIds }, active: true },
     select: { id: true },
@@ -93,10 +104,10 @@ export async function POST(req: NextRequest) {
   const inventory = await prisma.dailyInventory.create({
     data: {
       date,
-      userId:   session.user.id ?? "",
-      userName: session.user.name ?? session.user.username ?? "Usuario",
+      userId:   session.user.id,
+      userName: session.user.name ?? session.user.username,
       items: {
-        create: items.map((i) => ({ productId: i.productId, initialCount: i.initialCount })),
+        create: items.map((i: CreateItem) => ({ productId: i.productId, initialCount: i.initialCount })),
       },
     },
     include: {

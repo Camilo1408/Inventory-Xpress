@@ -19,12 +19,12 @@ export async function GET(req: Request) {
     where: {
       ...(productId && { productId }),
       ...(type && { type }),
-      ...(dateFrom || dateTo) && {
+      ...((dateFrom || dateTo) ? {
         createdAt: {
           ...(dateFrom && { gte: new Date(dateFrom) }),
           ...(dateTo && { lte: new Date(dateTo + "T23:59:59") }),
         },
-      },
+      } : {}),
     },
     include: { product: { select: { name: true, unit: true } } },
     orderBy: { createdAt: "desc" },
