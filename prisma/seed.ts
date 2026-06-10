@@ -12,11 +12,10 @@ async function main() {
   // Categorías base
   const categorias = ["Barra", "Cocina", "Limpieza"];
   for (const name of categorias) {
-    await prisma.category.upsert({
-      where: { name },
-      update: {},
-      create: { name },
-    });
+    const existing = await prisma.category.findFirst({ where: { name, parentId: null } });
+    if (!existing) {
+      await prisma.category.create({ data: { name } });
+    }
   }
   console.log("✓ Categorías creadas:", categorias.join(", "));
 

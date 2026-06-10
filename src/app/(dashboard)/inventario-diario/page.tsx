@@ -1,19 +1,25 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
-import { canDoStockCount } from "@/lib/permissions";
+import { canDoStockCount, canReopenDailyInventory } from "@/lib/permissions";
 import { DailyInventoryClient } from "./daily-inventory-client";
 
-export default async function InventarioDiarioPage() {
+export default async function InventarioDiarioPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string }>;
+}) {
   const session = await auth();
   if (!session) redirect("/login");
   if (!canDoStockCount(session.user.role, session.user.inventoryAccess)) redirect("/");
 
+  const resolvedParams = await searchParams;
   const today = new Date().toISOString().slice(0, 10);
+  const rawDate = resolvedParams.date;
+  const date = rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : today;
 
-  // Obtener inventario del día si existe
   const existing = await prisma.dailyInventory.findUnique({
-    where: { date: today },
+    where: { date },
     include: {
       items: {
         include: { product: { select: { id: true, name: true, unit: true, currentStock: true } } },
@@ -22,11 +28,10 @@ export default async function InventarioDiarioPage() {
     },
   });
 
-  // Calcular entradas y salidas del día si ya existe inventario
   let movements: { productId: string; type: string; quantity: number }[] = [];
   if (existing) {
-    const dayStart = new Date(`${today}T00:00:00.000Z`);
-    const dayEnd   = new Date(`${today}T23:59:59.999Z`);
+    const dayStart = new Date(`${date}T00:00:00.000Z`);
+    const dayEnd   = new Date(`${date}T23:59:59.999Z`);
     movements = await prisma.stockMovement.findMany({
       where: {
         productId: { in: existing.items.map((i) => i.productId) },
@@ -37,20 +42,28 @@ export default async function InventarioDiarioPage() {
     });
   }
 
-  // Listar todos los productos activos para el formulario de creación
   const allProducts = await prisma.product.findMany({
     where: { active: true },
     include: { category: { select: { name: true } } },
     orderBy: [{ category: { name: "asc" } }, { name: "asc" }],
   });
 
+  const history = await prisma.dailyInventory.findMany({
+    orderBy: { date: "desc" },
+    take: 60,
+    select: { id: true, date: true, status: true, userName: true, closedBy: true },
+  });
+
   return (
     <DailyInventoryClient
-      date={today}
+      date={date}
+      today={today}
       existing={existing}
       movements={movements}
       allProducts={allProducts}
       isSuperAdmin={session.user.role === "SUPERADMIN"}
+      canReopen={canReopenDailyInventory(session.user.role)}
+      history={history}
     />
   );
 }

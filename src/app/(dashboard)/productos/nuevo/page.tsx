@@ -10,8 +10,11 @@ export default async function NuevoProductoPage() {
   if (!canManageProducts(session.user.role)) redirect("/productos");
 
   const categories = await prisma.category.findMany({
-    where: { active: true },
+    where: { active: true, parentId: null },
     orderBy: { name: "asc" },
+    include: {
+      children: { where: { active: true }, orderBy: { name: "asc" } },
+    },
   });
 
   return (

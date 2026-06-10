@@ -23,7 +23,7 @@ export default async function AlertasPage() {
       minStock: p.minStock,
       deficit: p.minStock - p.currentStock,
       quantityToOrder: p.minStock * 2 - p.currentStock,
-      category: p.category.name,
+      category: p.category?.name ?? "Sin categoría",
     }));
 
   return (

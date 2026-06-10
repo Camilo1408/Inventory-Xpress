@@ -5,18 +5,22 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ImageUpload } from "./image-upload";
 import { toast } from "sonner";
 
-interface Category { id: string; name: string }
+interface Category {
+  id: string;
+  name: string;
+  children?: { id: string; name: string }[];
+}
 
 interface ProductFormProps {
   categories: Category[];
   initialData?: {
     id: string;
     name: string;
-    categoryId: string;
+    categoryId: string | null;
     unit: string;
     minStock: number;
     imageUrl: string | null;
@@ -30,7 +34,7 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
   const isEdit = !!initialData;
 
   const [name, setName] = useState(initialData?.name ?? "");
-  const [categoryId, setCategoryId] = useState(initialData?.categoryId ?? "");
+  const [categoryId, setCategoryId] = useState(initialData?.categoryId ?? (isEdit ? "__none__" : ""));
   const [unit, setUnit] = useState(initialData?.unit ?? "");
   const [minStock, setMinStock] = useState(initialData?.minStock?.toString() ?? "0");
   const [imageUrl, setImageUrl] = useState(initialData?.imageUrl ?? "");
@@ -38,8 +42,8 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim() || !categoryId || !unit) {
-      toast.error("Nombre, categoría y unidad son requeridos");
+    if (!name.trim() || (!isEdit && !categoryId) || !unit) {
+      toast.error(isEdit ? "Nombre y unidad son requeridos" : "Nombre, categoría y unidad son requeridos");
       return;
     }
 
@@ -47,7 +51,7 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
 
     const payload = {
       name: name.trim(),
-      categoryId,
+      categoryId: (categoryId === "__none__" || !categoryId) ? null : categoryId,
       unit,
       minStock: parseFloat(minStock) || 0,
       imageUrl: imageUrl || null,
@@ -89,15 +93,33 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
-          <Label>Categoría *</Label>
-          <Select value={categoryId} onValueChange={setCategoryId} required>
+          <Label>Categoría{!isEdit && " *"}</Label>
+          <Select value={categoryId} onValueChange={setCategoryId}>
             <SelectTrigger>
               <SelectValue placeholder="Seleccionar..." />
             </SelectTrigger>
             <SelectContent>
-              {categories.map((c) => (
-                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-              ))}
+              {isEdit && (
+                <SelectItem value="__none__">Sin categoría</SelectItem>
+              )}
+              {categories.map((cat) =>
+                cat.children && cat.children.length > 0 ? (
+                  <SelectGroup key={cat.id}>
+                    <SelectLabel className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                      {cat.name}
+                    </SelectLabel>
+                    {cat.children.map((sub) => (
+                      <SelectItem key={sub.id} value={sub.id}>
+                        {sub.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ) : (
+                  <SelectItem key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </SelectItem>
+                )
+              )}
             </SelectContent>
           </Select>
         </div>

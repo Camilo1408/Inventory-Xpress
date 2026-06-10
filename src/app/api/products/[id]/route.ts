@@ -58,7 +58,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   }
 
   const { id } = await params;
+  // Los productos nunca se eliminan definitivamente: se desactivan para preservar historial
   await prisma.product.update({ where: { id }, data: { active: false } });
-
   return NextResponse.json({ ok: true });
 }

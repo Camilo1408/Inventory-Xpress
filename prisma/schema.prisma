@@ -8,18 +8,23 @@ datasource db {
 }
 
 model Category {
-  id        String    @id @default(cuid())
-  name      String    @unique
-  active    Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id        String     @id @default(cuid())
+  name      String
+  parentId  String?
+  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryTree")
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
   products  Product[]
+
+  @@index([parentId])
 }
 
 model Product {
   id           String               @id @default(cuid())
-  categoryId   String
-  category     Category             @relation(fields: [categoryId], references: [id])
+  categoryId   String?
+  category     Category?            @relation(fields: [categoryId], references: [id])
   name         String
   unit         String
   currentStock Float                @default(0)
@@ -51,15 +56,18 @@ model StockMovement {
 }
 
 model DailyInventory {
-  id        String               @id @default(cuid())
-  date      String               // "YYYY-MM-DD"
-  status    String               @default("open") // "open" | "closed"
-  userId    String
-  userName  String
-  closedAt  DateTime?
-  closedBy  String?
-  createdAt DateTime             @default(now())
-  items     DailyInventoryItem[]
+  id          String               @id @default(cuid())
+  date        String               // "YYYY-MM-DD"
+  status      String               @default("open") // "open" | "closed"
+  userId      String
+  userName    String
+  closedAt    DateTime?
+  closedBy    String?
+  reopenedAt    DateTime?
+  reopenedBy    String?
+  reopenReason  String?
+  createdAt   DateTime             @default(now())
+  items       DailyInventoryItem[]
 
   @@unique([date])
   @@index([date])
@@ -73,6 +81,8 @@ model DailyInventoryItem {
   product          Product        @relation(fields: [productId], references: [id])
   initialCount     Float
   finalCount       Float?
+  unregisteredEntry Float?
+  unregisteredExit  Float?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 

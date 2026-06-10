@@ -104,7 +104,7 @@ export default async function DashboardPage() {
                   <div key={p.id} className="flex items-center gap-3 px-5 py-3">
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium text-slate-800 truncate">{p.name}</div>
-                      <div className="text-xs text-slate-400">{p.category.name}</div>
+                      <div className="text-xs text-slate-400">{p.category?.name ?? "Sin categoría"}</div>
                     </div>
                     <div className="text-sm tabular-nums font-medium text-slate-700">
                       {formatStock(p.currentStock, p.unit)}

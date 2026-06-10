@@ -13,6 +13,11 @@ export function canManageUsers(role: string): boolean {
   return role === "SUPERADMIN";
 }
 
+/** Solo ADMIN y SUPERADMIN pueden reabrir un inventario cerrado. */
+export function canReopenDailyInventory(role: string): boolean {
+  return role === "SUPERADMIN" || role === "ADMIN";
+}
+
 /** Usuario con solo permiso operativo (EMPLOYEE con inventoryAccess, no ADMIN ni SUPERADMIN). */
 export function isInventoryOnlyUser(role: string, inventoryAccess: boolean): boolean {
   return role !== "SUPERADMIN" && role !== "ADMIN" && inventoryAccess === true;
