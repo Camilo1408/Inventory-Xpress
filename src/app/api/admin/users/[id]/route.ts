@@ -12,7 +12,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const session = await auth();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-  if (!canManageUsers(session.user.role)) {
+  if (!canManageUsers(session.user)) {
     return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
   }
 
@@ -37,7 +37,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
 
   const session = await auth();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-  if (!canManageUsers(session.user.role)) {
+  if (!canManageUsers(session.user)) {
     return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
   }
 

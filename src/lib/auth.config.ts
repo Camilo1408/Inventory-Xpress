@@ -13,6 +13,7 @@ export const authConfig: NextAuthConfig = {
         token.username = (user as { username: string }).username;
         token.inventoryAccess = (user as { inventoryAccess: boolean }).inventoryAccess;
         token.tenantId = (user as { tenantId: string }).tenantId;
+        token.inventoryPermissions = (user as { inventoryPermissions?: string[] }).inventoryPermissions ?? [];
       }
       return token;
     },
@@ -22,6 +23,7 @@ export const authConfig: NextAuthConfig = {
       session.user.role = token.role as string;
       session.user.tenantId = token.tenantId as string;
       session.user.inventoryAccess = (token.inventoryAccess as boolean) ?? false;
+      session.user.inventoryPermissions = (token.inventoryPermissions as string[]) ?? [];
       return session;
     },
   },

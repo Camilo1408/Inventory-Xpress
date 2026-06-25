@@ -112,21 +112,21 @@ export function ReportesClient({ categories }: { categories: Category[] }) {
         </div>
 
         {/* Búsqueda */}
-        <div className="relative">
+        <div className="relative w-full sm:w-52">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar producto..."
-            className="h-10 pl-9 pr-3 w-52 rounded-md border border-slate-200 bg-white text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+            className="h-10 pl-9 pr-3 w-full rounded-md border border-slate-200 bg-white text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
           />
         </div>
       </div>
 
       {/* ── Tarjetas resumen ─────────────────────────────────────── */}
       {!loading && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="bg-white border border-slate-200 rounded-lg px-4 py-3 flex items-center gap-3">
             <div className="w-9 h-9 bg-blue-50 rounded-lg flex items-center justify-center shrink-0">
               <Package className="w-5 h-5 text-blue-500" />

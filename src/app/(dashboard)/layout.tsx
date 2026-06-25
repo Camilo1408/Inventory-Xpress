@@ -1,8 +1,8 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
-import { Sidebar } from "@/components/layout/sidebar";
-import { Header } from "@/components/layout/header";
+import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { canManageCategories, canManageUsers, isAdminRole } from "@/lib/permissions";
 
 export default async function DashboardLayout({
   children,
@@ -22,25 +22,17 @@ export default async function DashboardLayout({
   const nominaUrl = process.env.NEXT_PUBLIC_NOMINA_APP_URL;
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar
-        alertCount={alertCount}
-        isStandalone={isStandalone}
-        nominaUrl={nominaUrl}
-        role={session.user.role}
-        inventoryAccess={session.user.inventoryAccess}
-      />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Header
-          userName={session.user.name ?? session.user.username}
-          role={session.user.role}
-          isStandalone={isStandalone}
-          nominaUrl={nominaUrl}
-        />
-        <main className="flex-1 overflow-auto p-6">
-          {children}
-        </main>
-      </div>
-    </div>
+    <DashboardShell
+      alertCount={alertCount}
+      isStandalone={isStandalone}
+      nominaUrl={nominaUrl}
+      canManageCategories={canManageCategories(session.user)}
+      canManageUsers={canManageUsers(session.user)}
+      canViewAudit={isAdminRole(session.user)}
+      userName={session.user.name ?? session.user.username}
+      role={session.user.role}
+    >
+      {children}
+    </DashboardShell>
   );
 }

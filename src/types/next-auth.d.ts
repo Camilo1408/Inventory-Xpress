@@ -9,6 +9,7 @@ declare module "next-auth" {
       role: string;
       tenantId: string;
       inventoryAccess: boolean;
+      inventoryPermissions: string[];
     };
   }
   interface User {
@@ -16,6 +17,7 @@ declare module "next-auth" {
     tenantId: string;
     username: string;
     inventoryAccess: boolean;
+    inventoryPermissions?: string[];
   }
 }
 
@@ -25,5 +27,6 @@ declare module "next-auth/jwt" {
     tenantId: string;
     username: string;
     inventoryAccess: boolean;
+    inventoryPermissions?: string[];
   }
 }

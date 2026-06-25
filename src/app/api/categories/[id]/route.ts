@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { canManageProducts } from "@/lib/permissions";
+import { canManageCategories } from "@/lib/permissions";
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-  if (!canManageProducts(session.user.role)) {
+  if (!canManageCategories(session.user)) {
     return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
   }
 
@@ -27,7 +27,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-  if (!canManageProducts(session.user.role)) {
+  if (!canManageCategories(session.user)) {
     return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
   }
 

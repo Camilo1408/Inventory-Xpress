@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { History } from "lucide-react";
 import { MovementForm } from "@/components/movements/movement-form";
-import { canManageProducts } from "@/lib/permissions";
+import { canAdjustStock } from "@/lib/permissions";
 
 export default async function MovimientosPage() {
   const session = await auth();
@@ -17,13 +17,13 @@ export default async function MovimientosPage() {
     orderBy: { name: "asc" },
   });
 
-  const canAdjust = canManageProducts(session.user.role);
+  const canAdjust = canAdjustStock(session.user);
 
   return (
     <div className="max-w-lg mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Movimientos</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Movimientos</h1>
           <p className="text-slate-500 text-sm mt-1">Registra entradas y salidas de stock</p>
         </div>
         <Button variant="outline" asChild>
@@ -34,7 +34,7 @@ export default async function MovimientosPage() {
         </Button>
       </div>
 
-      <div className="bg-white rounded-lg border border-slate-200 p-6">
+      <div className="bg-white rounded-lg border border-slate-200 p-4 sm:p-6">
         <MovementForm products={products} canAdjust={canAdjust} />
       </div>
     </div>

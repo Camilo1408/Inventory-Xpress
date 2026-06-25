@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import { prisma } from "./db";
 import bcrypt from "bcryptjs";
 import { authConfig } from "./auth.config";
+import { standalonePermissions } from "./permissions";
 
 const isStandalone = process.env.AUTH_MODE === "standalone";
 
@@ -32,6 +33,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
               name: user.name ?? user.username,
               role: user.role,
               inventoryAccess: true,
+              inventoryPermissions: standalonePermissions(user.role),
               tenantId: "standalone",
             };
           },

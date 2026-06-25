@@ -38,9 +38,9 @@ function SubCategoryRow({
   onDelete: (id: string, name: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-3 pl-10 pr-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
+    <div className="flex flex-wrap items-center gap-3 pl-10 pr-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
       <span className="text-slate-300 text-xs select-none">└</span>
-      <span className={`flex-1 text-sm ${sub.active ? "text-slate-700" : "text-slate-400 line-through"}`}>
+      <span className={`flex-1 min-w-[8rem] text-sm ${sub.active ? "text-slate-700" : "text-slate-400 line-through"}`}>
         {sub.name}
       </span>
       <span className="text-xs text-slate-400">{sub._count.products} productos</span>
@@ -237,7 +237,7 @@ export function CategoriasClient({ categories }: { categories: Category[] }) {
           return (
             <div key={cat.id} className={idx > 0 ? "border-t border-slate-200" : ""}>
               {/* Fila categoría raíz */}
-              <div className="flex items-center gap-2 px-4 py-3 hover:bg-slate-50">
+              <div className="flex flex-wrap items-center gap-2 px-4 py-3 hover:bg-slate-50">
                 {/* Toggle expand */}
                 <button
                   type="button"

@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import { authConfig } from "@/lib/auth.config";
+import { canAccessInventory } from "@/lib/permissions";
 
 const { auth } = NextAuth(authConfig);
 
@@ -21,11 +22,9 @@ export default auth((req) => {
     return Response.redirect(loginUrl);
   }
 
-  if (
-    session.user.role !== "SUPERADMIN" &&
-    session.user.role !== "ADMIN" &&
-    !session.user.inventoryAccess
-  ) {
+  // Un único gate por acceso efectivo (incluye PROPRIETARY, que llega con
+  // inventoryAccess=true desde nómina, y roles personalizados con permisos).
+  if (!canAccessInventory(session.user)) {
     return Response.redirect(new URL("/unauthorized", req.url));
   }
 });

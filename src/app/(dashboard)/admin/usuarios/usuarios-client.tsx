@@ -76,8 +76,8 @@ export function UsuariosClient({ users }: { users: User[] }) {
         </Button>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white border border-slate-200 rounded-lg overflow-x-auto">
+        <table className="w-full min-w-[600px]">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
               <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Usuario</th>

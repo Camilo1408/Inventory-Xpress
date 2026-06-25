@@ -13,7 +13,7 @@ export async function GET() {
 
   const session = await auth();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-  if (!canManageUsers(session.user.role)) {
+  if (!canManageUsers(session.user)) {
     return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
   }
 
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
 
   const session = await auth();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-  if (!canManageUsers(session.user.role)) {
+  if (!canManageUsers(session.user)) {
     return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
   }
 

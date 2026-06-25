@@ -9,7 +9,7 @@ export default async function UsuariosPage() {
   if (!session) redirect("/login");
 
   if (process.env.AUTH_MODE !== "standalone") redirect("/");
-  if (!canManageUsers(session.user.role)) redirect("/");
+  if (!canManageUsers(session.user)) redirect("/");
 
   const users = await prisma.user.findMany({
     orderBy: { createdAt: "asc" },
@@ -19,7 +19,7 @@ export default async function UsuariosPage() {
   return (
     <div className="max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Gestión de usuarios</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Gestión de usuarios</h1>
         <p className="text-slate-500 text-sm mt-1">Crea y administra usuarios del sistema</p>
       </div>
       <UsuariosClient users={users} />

@@ -44,12 +44,13 @@ export default async function HistorialPage({
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Historial de movimientos</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Historial de movimientos</h1>
         <p className="text-slate-500 text-sm mt-1">{total} movimientos registrados</p>
       </div>
 
       <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-        <table className="w-full">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[760px]">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
               <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Fecha</th>
@@ -91,6 +92,7 @@ export default async function HistorialPage({
             )}
           </tbody>
         </table>
+        </div>
 
         {total > limit && (
           <div className="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-sm text-slate-500">

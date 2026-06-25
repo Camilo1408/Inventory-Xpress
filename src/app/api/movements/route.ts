@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { canDoStockCount } from "@/lib/permissions";
+import { canDoStockCount, canAdjustStock } from "@/lib/permissions";
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -45,7 +45,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-  if (!canDoStockCount(session.user.role, session.user.inventoryAccess)) {
+  if (!canDoStockCount(session.user)) {
     return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
   }
 
@@ -62,6 +62,11 @@ export async function POST(req: Request) {
 
   if (!["ENTRY", "EXIT", "ADJUSTMENT"].includes(body.type)) {
     return NextResponse.json({ error: "Tipo de movimiento inválido" }, { status: 400 });
+  }
+
+  // Los ajustes manuales requieren permiso específico además de stock:count.
+  if (body.type === "ADJUSTMENT" && !canAdjustStock(session.user)) {
+    return NextResponse.json({ error: "Sin permiso para ajustes" }, { status: 403 });
   }
 
   const product = await prisma.product.findUnique({ where: { id: body.productId } });

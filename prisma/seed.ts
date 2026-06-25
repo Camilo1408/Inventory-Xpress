@@ -1,6 +1,7 @@
 import { PrismaClient } from "../src/generated/prisma";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
 import bcrypt from "bcryptjs";
+import { slugify } from "../src/lib/slug";
 
 const adapter = new PrismaLibSql({
   url: process.env.TURSO_DATABASE_URL ?? "file:./inventario.db",
@@ -14,7 +15,7 @@ async function main() {
   for (const name of categorias) {
     const existing = await prisma.category.findFirst({ where: { name, parentId: null } });
     if (!existing) {
-      await prisma.category.create({ data: { name } });
+      await prisma.category.create({ data: { name, slug: slugify(name) } });
     }
   }
   console.log("✓ Categorías creadas:", categorias.join(", "));
