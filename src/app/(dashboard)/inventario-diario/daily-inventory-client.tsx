@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,16 +18,18 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { formatStock } from "@/lib/utils";
+import { BottleLevelSelector, ReserveCounter, BottleLevelBadge } from "@/components/inventario/bottle-level-selector";
+import { isBottleTrackedSlug, isBottleLevel, type BottleLevel } from "@/lib/bottle";
 import {
   ClipboardList,
   CheckCircle2,
   AlertTriangle,
   TrendingUp,
   TrendingDown,
-  Minus,
   RefreshCw,
   History,
   ChevronDown,
+  ChevronLeft,
   CalendarDays,
 } from "lucide-react";
 
@@ -37,17 +40,23 @@ interface Product {
   name: string;
   unit: string;
   currentStock: number;
-  category: { name: string } | null;
+  category: { name: string; slug: string | null } | null;
+  bottleLevel?: string | null;
+  reserveBottles?: number | null;
 }
 
 interface InventoryItem {
   id: string;
   productId: string;
-  product: { id: string; name: string; unit: string; currentStock: number };
+  product: { id: string; name: string; unit: string; currentStock: number; bottleLevel?: string | null; reserveBottles?: number | null; category?: { slug: string | null } | null };
   initialCount: number;
   finalCount: number | null;
   unregisteredEntry: number | null;
   unregisteredExit: number | null;
+  unregEntryReason?: string | null;
+  unregEntryTime?: string | null;
+  bottleLevel?: string | null;
+  reserveBottles?: number | null;
 }
 
 interface DailyInventory {
@@ -75,13 +84,21 @@ interface HistoryEntry {
   closedBy?: string | null;
 }
 
+interface InventoryCategory {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 interface Props {
   date: string;
   today: string;
   existing: DailyInventory | null;
   movements: Movement[];
   allProducts: Product[];
-  isSuperAdmin: boolean;
+  category: InventoryCategory;
+  canOpen: boolean;
+  canClose: boolean;
   canReopen: boolean;
   history: HistoryEntry[];
 }
@@ -113,12 +130,9 @@ function parseField(value: string | undefined): number | null {
   return n < 0 ? 0 : n;
 }
 
-/** Auto-cálculo de entrada/salida NR cuando ambas están vacías. */
-function deriveAuto(expected: number, finalCount: number) {
-  const diff = finalCount - expected;
-  if (diff > 0)  return { autoEntry: diff,  autoExit: 0 };
-  if (diff < 0)  return { autoEntry: 0,     autoExit: -diff };
-  return { autoEntry: 0, autoExit: 0 };
+/** ¿El producto/item se controla por nivel de botella (subcategoría Cócteles)? */
+function productIsBottle(p: { category?: { slug: string | null } | null }): boolean {
+  return isBottleTrackedSlug(p.category?.slug ?? null);
 }
 
 // ─── HistoryPanel ─────────────────────────────────────────────────────────────
@@ -126,9 +140,11 @@ function deriveAuto(expected: number, finalCount: number) {
 function HistoryPanel({
   history,
   currentDate,
+  categorySlug,
 }: {
   history: HistoryEntry[];
   currentDate: string;
+  categorySlug: string;
 }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
@@ -161,7 +177,7 @@ function HistoryPanel({
               <button
                 key={entry.id}
                 type="button"
-                onClick={() => router.push(`/inventario-diario?date=${entry.date}`)}
+                onClick={() => router.push(`/inventario-diario?categoria=${categorySlug}&date=${entry.date}`)}
                 className={`w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-slate-50 text-left transition-colors ${
                   entry.date === currentDate ? "bg-blue-50/60" : ""
                 }`}
@@ -246,14 +262,135 @@ function ZeroCountsDialog({
   );
 }
 
+// ─── Dialog: confirmación de diferencias con el inventario anterior ───────────
+
+interface DiscRow {
+  productId: string;
+  name: string;
+  unit: string;
+  system: number;
+  counted: number;
+  diff: number;
+}
+
+function DiscrepancyDialog({
+  open,
+  onOpenChange,
+  rows,
+  notes,
+  setNotes,
+  onConfirm,
+  loading,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  rows: DiscRow[];
+  notes: Record<string, string>;
+  setNotes: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  onConfirm: () => void;
+  loading: boolean;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!loading) onOpenChange(v); }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-amber-700">
+            <AlertTriangle className="w-4 h-4" />
+            Diferencias con el inventario anterior
+          </DialogTitle>
+          <DialogDescription>
+            El conteo inicial de estos productos no coincide con el stock del sistema. Si confirmas,
+            el stock se ajustará al valor contado y quedará un movimiento de corrección en el
+            historial global. Puedes dejar una nota opcional con el motivo.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-72 overflow-y-auto space-y-3">
+          {rows.map((r) => (
+            <div key={r.productId} className="border border-slate-200 rounded-md p-3 space-y-2">
+              <div className="flex items-center justify-between text-sm gap-2">
+                <span className="font-medium text-slate-800">{r.name}</span>
+                <span className="tabular-nums text-xs whitespace-nowrap">
+                  <span className="text-slate-500">Sistema {formatStock(r.system, r.unit)}</span>
+                  <span className="mx-1 text-slate-300">→</span>
+                  <span className="font-semibold text-slate-800">Contado {formatStock(r.counted, r.unit)}</span>
+                  <span className={`ml-2 font-medium ${r.diff > 0 ? "text-blue-600" : "text-red-600"}`}>
+                    ({r.diff > 0 ? "+" : ""}{formatStock(r.diff, r.unit)})
+                  </span>
+                </span>
+              </div>
+              <Input
+                type="text"
+                placeholder="Nota opcional (motivo de la corrección)"
+                value={notes[r.productId] ?? ""}
+                onChange={(e) => setNotes((prev) => ({ ...prev, [r.productId]: e.target.value }))}
+                className="text-sm"
+                disabled={loading}
+              />
+            </div>
+          ))}
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+            Volver y revisar
+          </Button>
+          <Button
+            onClick={onConfirm}
+            disabled={loading}
+            className="bg-amber-600 hover:bg-amber-700 text-white"
+          >
+            {loading ? "Guardando..." : "Confirmar y ajustar stock"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── View: Sin inventario (crear) ────────────────────────────────────────────
 
-function CreateView({ date, allProducts }: { date: string; allProducts: Product[] }) {
+interface StartItem {
+  productId: string;
+  initialCount: number;
+  note?: string;
+  bottleLevel?: BottleLevel | null;
+  reserveBottles?: number | null;
+}
+
+function CreateView({ date, allProducts, category }: { date: string; allProducts: Product[]; category: InventoryCategory }) {
   const router = useRouter();
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [zeroDialog, setZeroDialog] = useState(false);
-  const [pendingItems, setPendingItems] = useState<{ productId: string; initialCount: number }[]>([]);
+  const [pendingItems, setPendingItems] = useState<StartItem[]>([]);
+  const [discDialog, setDiscDialog] = useState(false);
+  const [discRows, setDiscRows] = useState<DiscRow[]>([]);
+  const [discNotes, setDiscNotes] = useState<Record<string, string>>({});
+
+  const [levels, setLevels] = useState<Record<string, BottleLevel>>(() =>
+    Object.fromEntries(
+      allProducts
+        .filter((p) => productIsBottle(p) && isBottleLevel(p.bottleLevel))
+        .map((p) => [p.id, p.bottleLevel as BottleLevel])
+    )
+  );
+  const [reserves, setReserves] = useState<Record<string, number>>(() =>
+    Object.fromEntries(
+      allProducts.filter((p) => productIsBottle(p)).map((p) => [p.id, p.reserveBottles ?? 0])
+    )
+  );
+
+  function keepSameBottles() {
+    const nextLevels: Record<string, BottleLevel> = {};
+    const nextReserves: Record<string, number> = {};
+    for (const p of allProducts) {
+      if (!productIsBottle(p)) continue;
+      if (isBottleLevel(p.bottleLevel)) nextLevels[p.id] = p.bottleLevel as BottleLevel;
+      nextReserves[p.id] = p.reserveBottles ?? 0;
+    }
+    setLevels(nextLevels);
+    setReserves(nextReserves);
+    toast.success("Niveles copiados del último registro");
+  }
 
   const byCategory = allProducts.reduce<Record<string, Product[]>>((acc, p) => {
     const cat = p.category?.name ?? "Sin categoría";
@@ -262,19 +399,26 @@ function CreateView({ date, allProducts }: { date: string; allProducts: Product[
     return acc;
   }, {});
 
-  function buildItems() {
-    return allProducts.map((p) => ({
-      productId: p.id,
-      initialCount: parseFloat(counts[p.id] ?? "") || 0,
-    }));
+  function buildItems(): StartItem[] {
+    return allProducts.map((p) => {
+      if (productIsBottle(p)) {
+        return {
+          productId: p.id,
+          initialCount: 0,
+          bottleLevel: levels[p.id] ?? null,
+          reserveBottles: reserves[p.id] ?? 0,
+        };
+      }
+      return { productId: p.id, initialCount: parseFloat(counts[p.id] ?? "") || 0 };
+    });
   }
 
-  async function submitItems(items: { productId: string; initialCount: number }[]) {
+  async function submitItems(items: StartItem[]) {
     setLoading(true);
     const res = await fetch("/api/daily-inventory", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date, items }),
+      body: JSON.stringify({ date, categoryId: category.id, items }),
     });
     setLoading(false);
     if (res.ok) {
@@ -286,11 +430,46 @@ function CreateView({ date, allProducts }: { date: string; allProducts: Product[
     }
   }
 
+  // Detecta productos cuyo conteo inicial difiere del stock del sistema.
+  function computeDiscRows(items: StartItem[]): DiscRow[] {
+    return items
+      .map((i) => {
+        const p = allProducts.find((pr) => pr.id === i.productId);
+        if (!p || productIsBottle(p)) return null;
+        const diff = i.initialCount - p.currentStock;
+        if (Math.abs(diff) <= 0.001) return null;
+        return {
+          productId: p.id,
+          name: p.name,
+          unit: p.unit,
+          system: p.currentStock,
+          counted: i.initialCount,
+          diff,
+        } satisfies DiscRow;
+      })
+      .filter((r): r is DiscRow => r !== null);
+  }
+
+  // Tras pasar el control de ceros, revisa discrepancias antes de enviar.
+  function proceedToDiscCheck(items: StartItem[]) {
+    const rows = computeDiscRows(items);
+    if (rows.length > 0) {
+      setPendingItems(items);
+      setDiscRows(rows);
+      setDiscDialog(true);
+      return;
+    }
+    void submitItems(items);
+  }
+
   function handleStart(e: React.FormEvent) {
     e.preventDefault();
     const items = buildItems();
     const zeroNames = items
-      .filter((i) => i.initialCount === 0)
+      .filter((i) => {
+        const p = allProducts.find((pr) => pr.id === i.productId);
+        return p && !productIsBottle(p) && i.initialCount === 0;
+      })
       .map((i) => allProducts.find((p) => p.id === i.productId)?.name ?? i.productId);
 
     if (zeroNames.length > 0) {
@@ -298,7 +477,7 @@ function CreateView({ date, allProducts }: { date: string; allProducts: Product[
       setZeroDialog(true);
       return;
     }
-    void submitItems(items);
+    proceedToDiscCheck(items);
   }
 
   return (
@@ -316,42 +495,70 @@ function CreateView({ date, allProducts }: { date: string; allProducts: Product[
 
         {Object.entries(byCategory).map(([cat, products]) => (
           <div key={cat} className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{cat}</span>
+              {products.every(productIsBottle) && (
+                <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={keepSameBottles}>
+                  <RefreshCw className="w-3 h-3 mr-1" /> Mantener igual
+                </Button>
+              )}
             </div>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="text-left px-4 py-2.5 font-medium text-slate-500">Producto</th>
-                  <th className="text-right px-4 py-2.5 font-medium text-slate-500">Stock sistema</th>
-                  <th className="text-right px-4 py-2.5 font-medium text-slate-500 w-36">Conteo inicial *</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {products.map((p) => {
-                  const isEmpty = !counts[p.id] || counts[p.id] === "0" || counts[p.id] === "";
-                  return (
-                    <tr key={p.id} className={isEmpty ? "bg-red-50/40" : ""}>
-                      <td className="px-4 py-2.5 font-medium text-slate-800">{p.name}</td>
-                      <td className="px-4 py-2.5 text-right text-slate-500 tabular-nums">
-                        {formatStock(p.currentStock, p.unit)}
-                      </td>
-                      <td className="px-4 py-2.5 text-right">
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.5"
-                          className={`w-28 ml-auto text-right tabular-nums ${isEmpty ? "border-red-300 focus-visible:ring-red-400" : ""}`}
-                          value={counts[p.id] ?? ""}
-                          onChange={(e) => setCounts((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                          placeholder="0"
+            {products.every(productIsBottle) ? (
+              <div className="divide-y divide-slate-100">
+                {products.map((p) => (
+                  <div key={p.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+                    <span className="font-medium text-slate-800 text-sm">{p.name}</span>
+                    <div className="flex flex-wrap items-center gap-4">
+                      <BottleLevelSelector
+                        value={levels[p.id] ?? null}
+                        onChange={(v) => setLevels((prev) => ({ ...prev, [p.id]: v }))}
+                      />
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500">Reserva</span>
+                        <ReserveCounter
+                          value={reserves[p.id] ?? 0}
+                          onChange={(v) => setReserves((prev) => ({ ...prev, [p.id]: v }))}
                         />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="text-left px-4 py-2.5 font-medium text-slate-500">Producto</th>
+                    <th className="text-right px-4 py-2.5 font-medium text-slate-500">Stock sistema</th>
+                    <th className="text-right px-4 py-2.5 font-medium text-slate-500 w-36">Conteo inicial *</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {products.map((p) => {
+                    const isEmpty = !counts[p.id] || counts[p.id] === "0" || counts[p.id] === "";
+                    return (
+                      <tr key={p.id} className={isEmpty ? "bg-red-50/40" : ""}>
+                        <td className="px-4 py-2.5 font-medium text-slate-800">{p.name}</td>
+                        <td className="px-4 py-2.5 text-right text-slate-500 tabular-nums">
+                          {formatStock(p.currentStock, p.unit)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            className={`w-28 ml-auto text-right tabular-nums ${isEmpty ? "border-red-300 focus-visible:ring-red-400" : ""}`}
+                            value={counts[p.id] ?? ""}
+                            onChange={(e) => setCounts((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                            placeholder="0"
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         ))}
 
@@ -366,11 +573,151 @@ function CreateView({ date, allProducts }: { date: string; allProducts: Product[
         zeroProducts={pendingItems
           .filter((i) => i.initialCount === 0)
           .map((i) => allProducts.find((p) => p.id === i.productId)?.name ?? i.productId)}
-        onConfirm={() => { setZeroDialog(false); void submitItems(pendingItems); }}
+        onConfirm={() => { setZeroDialog(false); proceedToDiscCheck(pendingItems); }}
         loading={loading}
         label="Iniciar con ceros"
       />
+
+      <DiscrepancyDialog
+        open={discDialog}
+        onOpenChange={setDiscDialog}
+        rows={discRows}
+        notes={discNotes}
+        setNotes={setDiscNotes}
+        onConfirm={() => {
+          const withNotes = pendingItems.map((i) => {
+            const note = discNotes[i.productId]?.trim();
+            return note ? { ...i, note } : i;
+          });
+          setDiscDialog(false);
+          void submitItems(withNotes);
+        }}
+        loading={loading}
+      />
     </>
+  );
+}
+
+// ─── Dialog: confirmación de cierre de jornada ────────────────────────────────
+
+interface AutoRow {
+  name: string;
+  qty: number;
+  unit: string;
+}
+
+interface CloseItem {
+  productId: string;
+  finalCount: number;
+  unregisteredEntry: number | null;
+  unregisteredExit: number | null;
+  entryReason: string | null;
+  entryTime: string | null;
+  bottleLevel: BottleLevel | null;
+  reserveBottles: number | null;
+}
+
+/** Producto con entrada no registrada que requiere justificación (motivo + hora). */
+interface EntryJustifyRow {
+  productId: string;
+  name: string;
+  qty: number;
+  unit: string;
+}
+
+function CloseConfirmDialog({
+  open,
+  onOpenChange,
+  autoExits,
+  entries,
+  zeros,
+  onConfirm,
+  loading,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  autoExits: AutoRow[];
+  entries: EntryJustifyRow[];
+  zeros: string[];
+  onConfirm: () => void;
+  loading: boolean;
+}) {
+  const noChanges = autoExits.length === 0 && entries.length === 0;
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!loading) onOpenChange(v); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            Confirmar cierre de jornada
+          </DialogTitle>
+          <DialogDescription>
+            Verifica que los conteos sean correctos. Al confirmar se registrará el inventario y el
+            stock de cada producto quedará igual al conteo real.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 text-sm max-h-[60vh] overflow-y-auto">
+          {entries.length > 0 && (
+            <div className="rounded-md border border-emerald-100 bg-emerald-50/60 p-3">
+              <p className="font-medium text-emerald-700 mb-1.5 flex items-center gap-1.5">
+                <TrendingUp className="w-3.5 h-3.5" />
+                Entradas no registradas
+              </p>
+              <ul className="space-y-0.5 text-slate-600">
+                {entries.map((r) => (
+                  <li key={r.productId} className="flex justify-between gap-2">
+                    <span>{r.name}</span>
+                    <span className="tabular-nums font-medium text-emerald-600">+{formatStock(r.qty, r.unit)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {autoExits.length > 0 && (
+            <div className="rounded-md border border-red-100 bg-red-50/60 p-3">
+              <p className="font-medium text-red-700 mb-1.5 flex items-center gap-1.5">
+                <TrendingDown className="w-3.5 h-3.5" />
+                Se calcularán salidas automáticamente
+              </p>
+              <ul className="space-y-0.5 text-slate-600">
+                {autoExits.map((r) => (
+                  <li key={r.name} className="flex justify-between gap-2">
+                    <span>{r.name}</span>
+                    <span className="tabular-nums font-medium text-red-600">−{formatStock(r.qty, r.unit)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {zeros.length > 0 && (
+            <div className="rounded-md border border-amber-100 bg-amber-50/60 p-3">
+              <p className="font-medium text-amber-700 mb-1 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                Productos registrados sin existencias
+              </p>
+              <p className="text-xs text-slate-600">{zeros.join(", ")}</p>
+            </div>
+          )}
+
+          {noChanges && zeros.length === 0 && (
+            <p className="text-slate-500">Los conteos coinciden con el stock esperado.</p>
+          )}
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+            Volver y revisar
+          </Button>
+          <Button onClick={onConfirm} disabled={loading} className="bg-blue-600 hover:bg-blue-700">
+            {loading ? "Cerrando..." : "Confirmar y cerrar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -379,9 +726,12 @@ function CreateView({ date, allProducts }: { date: string; allProducts: Product[
 function OpenView({
   inventory,
   movements,
+  canClose,
 }: {
   inventory: DailyInventory;
   movements: Movement[];
+  category: InventoryCategory;
+  canClose: boolean;
 }) {
   const router = useRouter();
 
@@ -408,20 +758,66 @@ function OpenView({
     )
   );
 
-  const [loading, setLoading] = useState(false);
-  const [zeroDialog, setZeroDialog] = useState(false);
-  const [pendingClose, setPendingClose] = useState<
-    { productId: string; finalCount: number; unregisteredEntry: number | null; unregisteredExit: number | null }[]
-  >([]);
+  // Justificación de entradas no registradas: motivo y hora de ingreso (precargados al reabrir).
+  const [entryReasons, setEntryReasons] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      inventory.items.filter((i) => i.unregEntryReason).map((i) => [i.productId, i.unregEntryReason as string])
+    )
+  );
+  const [entryTimes, setEntryTimes] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      inventory.items.filter((i) => i.unregEntryTime).map((i) => [i.productId, i.unregEntryTime as string])
+    )
+  );
 
-  // Mapa por producto con los cálculos en vivo
+  const [loading, setLoading] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(false);
+  const [pendingClose, setPendingClose] = useState<CloseItem[]>([]);
+
+  const bottleItems = useMemo(() => inventory.items.filter((i) => productIsBottle(i.product)), [inventory.items]);
+  const numericItems = useMemo(() => inventory.items.filter((i) => !productIsBottle(i.product)), [inventory.items]);
+
+  const [bottleLevels, setBottleLevels] = useState<Record<string, BottleLevel>>(() =>
+    Object.fromEntries(
+      inventory.items
+        .filter((i) => productIsBottle(i.product))
+        .map((i) => {
+          const lvl = isBottleLevel(i.bottleLevel) ? i.bottleLevel : (isBottleLevel(i.product.bottleLevel) ? i.product.bottleLevel : null);
+          return [i.productId, lvl];
+        })
+        .filter((e): e is [string, BottleLevel] => e[1] !== null)
+    )
+  );
+  const [bottleReserves, setBottleReserves] = useState<Record<string, number>>(() =>
+    Object.fromEntries(
+      inventory.items
+        .filter((i) => productIsBottle(i.product))
+        .map((i) => [i.productId, i.reserveBottles ?? i.product.reserveBottles ?? 0])
+    )
+  );
+
+  function keepSameBottles() {
+    const nextLevels: Record<string, BottleLevel> = {};
+    const nextReserves: Record<string, number> = {};
+    for (const i of bottleItems) {
+      const lvl = isBottleLevel(i.product.bottleLevel) ? i.product.bottleLevel as BottleLevel : (isBottleLevel(i.bottleLevel) ? i.bottleLevel as BottleLevel : null);
+      if (lvl) nextLevels[i.productId] = lvl;
+      nextReserves[i.productId] = i.product.reserveBottles ?? i.reserveBottles ?? 0;
+    }
+    setBottleLevels(nextLevels);
+    setBottleReserves(nextReserves);
+    toast.success("Niveles copiados del último registro");
+  }
+
+  // Mapa por producto con los cálculos en vivo (solo ítems numéricos)
   const rows = useMemo(
     () =>
-      inventory.items.map((item) => {
+      numericItems.map((item) => {
         const { entries, exits } = calcMovements(movements, item.productId);
         const expected = item.initialCount + entries - exits;
 
         const finalStr = finalCounts[item.productId] ?? "";
+        const finalEntered = finalStr.trim() !== "";
         const finalNum = parseField(finalStr) ?? 0;
 
         const entryStr = unregEntries[item.productId] ?? "";
@@ -429,13 +825,20 @@ function OpenView({
         const entryNum = parseField(entryStr);
         const exitNum  = parseField(exitStr);
 
-        const bothEmpty = entryNum === null && exitNum === null;
-        const { autoEntry, autoExit } = deriveAuto(expected, finalNum);
+        const manualEntry = entryNum ?? 0;
+        const manualExit  = exitNum  ?? 0;
 
-        const effEntry = entryNum ?? (bothEmpty ? autoEntry : 0);
-        const effExit  = exitNum  ?? (bothEmpty ? autoExit  : 0);
+        // Diferencia que falta explicar tras aplicar las NR manuales (solo si ya
+        // se ingresó el conteo real). El lado que el usuario NO ingresó la absorbe:
+        // sobrante → entrada NR, faltante → salida NR. Así nunca queda residual.
+        const gap = finalEntered ? finalNum - (expected + manualEntry - manualExit) : 0;
+        const autoEntry = entryNum === null && gap > 0 ? gap : 0;
+        const autoExit  = exitNum  === null && gap < 0 ? -gap : 0;
 
-        // stock_final calculado y comparado con conteo real
+        const effEntry = entryNum ?? autoEntry;
+        const effExit  = exitNum  ?? autoExit;
+
+        // Esperado en vivo = inicial + entradas (reg + NR) − salidas (reg + NR).
         const calculated = item.initialCount + entries - exits + effEntry - effExit;
         const diff = finalNum - calculated;
 
@@ -445,36 +848,46 @@ function OpenView({
           exits,
           expected,
           finalNum,
+          finalEntered,
           entryStr,
           exitStr,
           finalStr,
           autoEntry,
           autoExit,
-          bothEmpty,
           effEntry,
           effExit,
           calculated,
           diff,
         };
       }),
-    [inventory.items, movements, finalCounts, unregEntries, unregExits]
+    [numericItems, movements, finalCounts, unregEntries, unregExits]
   );
 
-  function buildItems() {
-    return rows.map((r) => ({
+  function buildItems(): CloseItem[] {
+    const numeric: CloseItem[] = rows.map((r) => ({
       productId: r.item.productId,
       finalCount: parseField(r.finalStr) ?? 0,
       unregisteredEntry: parseField(r.entryStr),
       unregisteredExit:  parseField(r.exitStr),
+      entryReason: r.effEntry > 0 ? (entryReasons[r.item.productId]?.trim() || null) : null,
+      entryTime:   r.effEntry > 0 ? (entryTimes[r.item.productId]?.trim() || null) : null,
+      bottleLevel: null,
+      reserveBottles: null,
     }));
+    const bottles: CloseItem[] = bottleItems.map((i) => ({
+      productId: i.productId,
+      finalCount: 0,
+      unregisteredEntry: null,
+      unregisteredExit: null,
+      entryReason: null,
+      entryTime: null,
+      bottleLevel: bottleLevels[i.productId] ?? null,
+      reserveBottles: bottleReserves[i.productId] ?? 0,
+    }));
+    return [...numeric, ...bottles];
   }
 
-  async function submitClose(items: {
-    productId: string;
-    finalCount: number;
-    unregisteredEntry: number | null;
-    unregisteredExit: number | null;
-  }[]) {
+  async function submitClose(items: CloseItem[]) {
     setLoading(true);
     const res = await fetch(`/api/daily-inventory/${inventory.id}`, {
       method: "PATCH",
@@ -493,17 +906,18 @@ function OpenView({
 
   function handleClose(e: React.FormEvent) {
     e.preventDefault();
-    const items = buildItems();
-    const zeroNames = items
-      .filter((i) => i.finalCount === 0)
-      .map((i) => inventory.items.find((it) => it.productId === i.productId)?.product.name ?? i.productId);
-
-    if (zeroNames.length > 0) {
-      setPendingClose(items);
-      setZeroDialog(true);
+    // Toda entrada no registrada exige motivo y hora antes de cerrar.
+    const missing = rows.find(
+      (r) =>
+        r.effEntry > 0 &&
+        ((entryReasons[r.item.productId]?.trim() ?? "") === "" || (entryTimes[r.item.productId]?.trim() ?? "") === "")
+    );
+    if (missing) {
+      toast.error(`Justifica la entrada no registrada de ${missing.item.product.name}: motivo y hora de ingreso.`);
       return;
     }
-    void submitClose(items);
+    setPendingClose(buildItems());
+    setConfirmDialog(true);
   }
 
   return (
@@ -533,6 +947,38 @@ function OpenView({
       )}
 
       <form onSubmit={handleClose} className="space-y-4">
+        {bottleItems.length > 0 && (
+          <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Cócteles · nivel de botella</span>
+              <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={keepSameBottles}>
+                <RefreshCw className="w-3 h-3 mr-1" /> Mantener igual
+              </Button>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {bottleItems.map((i) => (
+                <div key={i.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+                  <span className="font-medium text-slate-800 text-sm">{i.product.name}</span>
+                  <div className="flex flex-wrap items-center gap-4">
+                    <BottleLevelSelector
+                      value={bottleLevels[i.productId] ?? null}
+                      onChange={(v) => setBottleLevels((prev) => ({ ...prev, [i.productId]: v }))}
+                    />
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-500">Reserva</span>
+                      <ReserveCounter
+                        value={bottleReserves[i.productId] ?? 0}
+                        onChange={(v) => setBottleReserves((prev) => ({ ...prev, [i.productId]: v }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {numericItems.length > 0 && (
         <div className="bg-white border border-slate-200 rounded-lg overflow-x-auto">
           <table className="w-full text-sm min-w-[1100px]">
             <thead>
@@ -541,9 +987,9 @@ function OpenView({
                 <th className="text-right px-3 py-3 font-medium text-slate-500">Inicial</th>
                 <th className="text-right px-3 py-3 font-medium text-emerald-600">+ Entradas reg.</th>
                 <th className="text-right px-3 py-3 font-medium text-red-500">− Salidas reg.</th>
-                <th className="text-right px-3 py-3 font-medium text-slate-700">Esperado</th>
                 <th className="text-right px-3 py-3 font-medium text-emerald-700 w-32">Entrada NR</th>
                 <th className="text-right px-3 py-3 font-medium text-red-600 w-32">Salida NR</th>
+                <th className="text-right px-3 py-3 font-medium text-slate-700">Esperado</th>
                 <th className="text-right px-3 py-3 font-medium text-slate-800 w-32">Conteo real *</th>
               </tr>
             </thead>
@@ -551,7 +997,8 @@ function OpenView({
               {rows.map((r) => {
                 const finalIsEmpty = r.finalStr.trim() === "" || r.finalStr === "0";
                 return (
-                  <tr key={r.item.id} className={finalIsEmpty ? "bg-red-50/30" : "hover:bg-slate-50"}>
+                  <Fragment key={r.item.id}>
+                    <tr className={finalIsEmpty ? "bg-red-50/30" : "hover:bg-slate-50"}>
                     <td className="px-4 py-2.5 font-medium text-slate-800">{r.item.product.name}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-slate-600">
                       {formatStock(r.item.initialCount, r.item.product.unit)}
@@ -561,9 +1008,6 @@ function OpenView({
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-red-500">
                       {r.exits > 0 ? `−${formatStock(r.exits, r.item.product.unit)}` : "—"}
-                    </td>
-                    <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-slate-800">
-                      {formatStock(r.expected, r.item.product.unit)}
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       <Input
@@ -575,7 +1019,7 @@ function OpenView({
                         onChange={(e) =>
                           setUnregEntries((prev) => ({ ...prev, [r.item.productId]: e.target.value }))
                         }
-                        placeholder={r.bothEmpty && r.autoEntry > 0 ? `auto ${r.autoEntry}` : "0"}
+                        placeholder={r.autoEntry > 0 ? `auto ${r.autoEntry}` : "0"}
                       />
                     </td>
                     <td className="px-3 py-2.5 text-right">
@@ -588,8 +1032,11 @@ function OpenView({
                         onChange={(e) =>
                           setUnregExits((prev) => ({ ...prev, [r.item.productId]: e.target.value }))
                         }
-                        placeholder={r.bothEmpty && r.autoExit > 0 ? `auto ${r.autoExit}` : "0"}
+                        placeholder={r.autoExit > 0 ? `auto ${r.autoExit}` : "0"}
                       />
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-slate-800">
+                      {formatStock(r.calculated, r.item.product.unit)}
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       <Input
@@ -606,39 +1053,73 @@ function OpenView({
                         placeholder="0"
                       />
                     </td>
-                  </tr>
+                    </tr>
+                    {r.effEntry > 0 && (
+                      <tr className="bg-emerald-50/40">
+                        <td colSpan={8} className="px-4 py-2.5">
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                            <span className="text-xs font-medium text-emerald-700 shrink-0">
+                              Justifica la entrada NR de {r.item.product.name} (+{formatStock(r.effEntry, r.item.product.unit)}):
+                            </span>
+                            <Input
+                              type="text"
+                              placeholder="Motivo (por qué no se registró)"
+                              value={entryReasons[r.item.productId] ?? ""}
+                              onChange={(ev) => setEntryReasons((p) => ({ ...p, [r.item.productId]: ev.target.value }))}
+                              className="text-sm flex-1"
+                            />
+                            <Input
+                              type="time"
+                              value={entryTimes[r.item.productId] ?? ""}
+                              onChange={(ev) => setEntryTimes((p) => ({ ...p, [r.item.productId]: ev.target.value }))}
+                              className="text-sm w-full sm:w-40"
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>
           </table>
         </div>
+        )}
 
+        {numericItems.length > 0 && (
         <p className="text-xs text-slate-500">
           <strong>Entrada / Salida NR</strong>: cantidades que ocurrieron pero no fueron registradas como movimiento. Si los dejas vacíos, se calculan automáticamente a partir de la diferencia entre el conteo real y el esperado.
         </p>
+        )}
 
         <div className="flex gap-3">
-          <Button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700">
-            {loading ? "Cerrando..." : "Confirmar y cerrar jornada"}
-          </Button>
+          {canClose ? (
+            <Button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700">
+              {loading ? "Cerrando..." : "Confirmar y cerrar jornada"}
+            </Button>
+          ) : (
+            <p className="text-xs text-amber-700">No tienes permiso para cerrar el inventario de esta categoría.</p>
+          )}
         </div>
       </form>
 
-      <ZeroCountsDialog
-        open={zeroDialog}
-        onOpenChange={setZeroDialog}
-        zeroProducts={pendingClose
-          .filter((i) => i.finalCount === 0)
-          .map(
-            (i) =>
-              inventory.items.find((it) => it.productId === i.productId)?.product.name ?? i.productId
-          )}
+      <CloseConfirmDialog
+        open={confirmDialog}
+        onOpenChange={setConfirmDialog}
+        autoExits={rows
+          .filter((r) => r.exitStr.trim() === "" && r.autoExit > 0)
+          .map((r) => ({ name: r.item.product.name, qty: r.autoExit, unit: r.item.product.unit }))}
+        entries={rows
+          .filter((r) => r.effEntry > 0)
+          .map((r) => ({ productId: r.item.productId, name: r.item.product.name, qty: r.effEntry, unit: r.item.product.unit }))}
+        zeros={rows
+          .filter((r) => (parseField(r.finalStr) ?? 0) === 0)
+          .map((r) => r.item.product.name)}
         onConfirm={() => {
-          setZeroDialog(false);
+          setConfirmDialog(false);
           void submitClose(pendingClose);
         }}
         loading={loading}
-        label="Cerrar con ceros"
       />
     </div>
   );
@@ -682,7 +1163,9 @@ function ClosedView({
     }
   }
 
-  const rows = inventory.items.map((item) => {
+  const bottleItems = inventory.items.filter((i) => productIsBottle(i.product));
+  const numericItems = inventory.items.filter((i) => !productIsBottle(i.product));
+  const rows = numericItems.map((item) => {
     const { entries, exits } = calcMovements(movements, item.productId);
     const expected = item.initialCount + entries - exits;
     const unregEntry = item.unregisteredEntry ?? 0;
@@ -693,7 +1176,6 @@ function ClosedView({
     return { item, entries, exits, expected, unregEntry, unregExit, finalCount, calculated, diff };
   });
 
-  const hasDiscrepancies = rows.some((r) => Math.abs(r.diff) > 0.001);
   const hasUnregistered  = rows.some((r) => r.unregEntry > 0 || r.unregExit > 0);
 
   return (
@@ -705,10 +1187,8 @@ function ClosedView({
             <p className="text-sm font-semibold text-emerald-800">Jornada cerrada</p>
             <p className="text-xs text-emerald-600 mt-0.5">
               Cerrado por {inventory.closedBy ?? "—"}.{" "}
-              {hasDiscrepancies
-                ? "Se encontraron diferencias. Revisa los detalles abajo."
-                : hasUnregistered
-                ? "Se registraron movimientos no registrados."
+              {hasUnregistered
+                ? "Se registraron entradas/salidas no registradas calculadas en el cierre."
                 : "Todo coincide correctamente."}
             </p>
           </div>
@@ -726,8 +1206,28 @@ function ClosedView({
         )}
       </div>
 
+      {bottleItems.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+          <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Cócteles · nivel de botella</span>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {bottleItems.map((i) => (
+              <div key={i.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                <span className="font-medium text-slate-800 text-sm">{i.product.name}</span>
+                <div className="flex items-center gap-3">
+                  <BottleLevelBadge level={isBottleLevel(i.bottleLevel) ? i.bottleLevel : null} />
+                  <span className="text-xs text-slate-500">Reserva: <strong className="tabular-nums">{i.reserveBottles ?? 0}</strong></span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {numericItems.length > 0 && (
       <div className="bg-white border border-slate-200 rounded-lg overflow-x-auto">
-        <table className="w-full text-sm min-w-[960px]">
+        <table className="w-full text-sm min-w-[860px]">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
               <th className="text-left px-4 py-3 font-medium text-slate-500">Producto</th>
@@ -738,14 +1238,12 @@ function ClosedView({
               <th className="text-right px-3 py-3 font-medium text-red-600">Salida NR</th>
               <th className="text-right px-3 py-3 font-medium text-slate-600">Esperado</th>
               <th className="text-right px-3 py-3 font-medium text-slate-800">Conteo final</th>
-              <th className="text-center px-3 py-3 font-medium text-slate-500">Diferencia</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rows.map((r) => {
-              const hasGap = Math.abs(r.diff) > 0.001;
               return (
-                <tr key={r.item.id} className={hasGap ? "bg-amber-50/50" : ""}>
+                <tr key={r.item.id}>
                   <td className="px-4 py-3 font-medium text-slate-800">{r.item.product.name}</td>
                   <td className="px-3 py-3 text-right tabular-nums text-slate-500">
                     {formatStock(r.item.initialCount, r.item.product.unit)}
@@ -763,27 +1261,10 @@ function ClosedView({
                     {r.unregExit > 0 ? `−${formatStock(r.unregExit, r.item.product.unit)}` : "—"}
                   </td>
                   <td className="px-3 py-3 text-right tabular-nums text-slate-600">
-                    {formatStock(r.expected, r.item.product.unit)}
+                    {formatStock(r.calculated, r.item.product.unit)}
                   </td>
                   <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-800">
                     {formatStock(r.finalCount, r.item.product.unit)}
-                  </td>
-                  <td className="px-3 py-3 text-center">
-                    {!hasGap ? (
-                      <span className="inline-flex items-center gap-1 text-emerald-600 text-xs font-medium">
-                        <Minus className="w-3 h-3" /> Sin diferencia
-                      </span>
-                    ) : r.diff > 0 ? (
-                      <span className="inline-flex items-center gap-1 text-blue-600 text-xs font-medium">
-                        <TrendingUp className="w-3 h-3" />
-                        +{formatStock(r.diff, r.item.product.unit)}
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-red-600 text-xs font-medium">
-                        <TrendingDown className="w-3 h-3" />
-                        {formatStock(r.diff, r.item.product.unit)}
-                      </span>
-                    )}
                   </td>
                 </tr>
               );
@@ -791,18 +1272,8 @@ function ClosedView({
           </tbody>
         </table>
       </div>
-
-      {hasDiscrepancies && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex gap-3">
-          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold text-amber-800">Quedaron diferencias residuales</p>
-            <p className="text-xs text-amber-700 mt-0.5">
-              Después de aplicar las entradas y salidas no registradas, el conteo real todavía no coincide con el stock calculado.
-            </p>
-          </div>
-        </div>
       )}
+
 
       <Dialog
         open={dialogOpen}
@@ -868,6 +1339,9 @@ export function DailyInventoryClient({
   existing,
   movements,
   allProducts,
+  category,
+  canOpen,
+  canClose,
   canReopen,
   history,
 }: Props) {
@@ -878,7 +1352,16 @@ export function DailyInventoryClient({
     <div className="space-y-6 max-w-6xl">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Inventario Diario</h1>
+          <Link
+            href="/inventario-diario"
+            className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 mb-1"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" />
+            Todas las categorías
+          </Link>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
+            Inventario Diario · {category.name}
+          </h1>
           <p className="text-slate-500 text-sm mt-1 capitalize">{formatDate(date)}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -886,7 +1369,7 @@ export function DailyInventoryClient({
             <Button
               size="sm"
               variant="outline"
-              onClick={() => router.push("/inventario-diario")}
+              onClick={() => router.push(`/inventario-diario?categoria=${category.slug}`)}
               className="text-blue-600 border-blue-200 hover:bg-blue-50"
             >
               <CalendarDays className="w-3.5 h-3.5 mr-1.5" />
@@ -907,18 +1390,24 @@ export function DailyInventoryClient({
         </div>
       </div>
 
-      <HistoryPanel history={history} currentDate={date} />
+      <HistoryPanel history={history} currentDate={date} categorySlug={category.slug} />
 
       {!existing ? (
         isToday ? (
-          <CreateView date={date} allProducts={allProducts} />
+          canOpen ? (
+            <CreateView date={date} allProducts={allProducts} category={category} />
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-lg p-10 text-center">
+              <p className="text-slate-500 text-sm">No tienes permiso para abrir el inventario de esta categoría.</p>
+            </div>
+          )
         ) : (
           <div className="bg-white border border-slate-200 rounded-lg p-10 text-center">
             <p className="text-slate-500 text-sm">No hay inventario registrado para esta fecha.</p>
           </div>
         )
       ) : existing.status === "open" ? (
-        <OpenView inventory={existing} movements={movements} />
+        <OpenView inventory={existing} movements={movements} category={category} canClose={canClose} />
       ) : (
         <ClosedView inventory={existing} movements={movements} canReopen={canReopen} />
       )}
