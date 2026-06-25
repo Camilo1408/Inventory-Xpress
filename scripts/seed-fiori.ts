@@ -13,8 +13,9 @@
  */
 import { PrismaClient } from "../src/generated/prisma";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
-import { slugify, uniqueSlug } from "../src/lib/slug";
+import { uniqueSlug } from "../src/lib/slug";
 import { BOTTLE_LEVELS, type BottleLevel } from "../src/lib/bottle";
+import { orderForCategoryName } from "../src/lib/category-order";
 
 const adapter = new PrismaLibSql({
   url: process.env.TURSO_DATABASE_URL ?? "file:./inventario.db",
@@ -146,7 +147,7 @@ async function getOrCreateCategory(name: string, parentId: string | null, used: 
   }
   const slug = uniqueSlug(name, used);
   used.add(slug);
-  return prisma.category.create({ data: { name, parentId, slug } });
+  return prisma.category.create({ data: { name, parentId, slug, sortOrder: orderForCategoryName(name) } });
 }
 
 async function main() {
