@@ -10,6 +10,9 @@ datasource db {
 model Category {
   id        String     @id @default(cuid())
   name      String
+  // Slug estable para claves de permiso por categoría (contrato con Nómina).
+  // Único entre todas las categorías; se autogenera del nombre.
+  slug      String?    @unique
   parentId  String?
   parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id])
   children  Category[] @relation("CategoryTree")
@@ -17,6 +20,7 @@ model Category {
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   products  Product[]
+  dailyInventories DailyInventory[]
 
   @@index([parentId])
 }
@@ -30,6 +34,12 @@ model Product {
   currentStock Float                @default(0)
   minStock     Float                @default(0)
   imageUrl     String?
+  // Control por nivel de botella (solo subcategoría Cócteles; null en el resto).
+  // bottleLevel: "full" | "three_quarters" | "half" | "quarter" | "almost_empty"
+  bottleLevel      String?
+  reserveBottles   Int?
+  // Umbral de alerta de compra; null = "almost_empty" por defecto.
+  alertBottleLevel String?
   active       Boolean              @default(true)
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
@@ -50,6 +60,13 @@ model StockMovement {
   userName  String
   createdAt DateTime @default(now())
 
+  // Trazabilidad de movimientos auto-generados por el inventario diario.
+  // Movimientos manuales dejan ambos campos en null.
+  // source: "daily_open_adjust" | "daily_nr_entry" | "daily_nr_exit" | "daily_close_adjust"
+  dailyInventoryItemId String?
+  source               String?
+
+  @@unique([dailyInventoryItemId, source])
   @@index([productId])
   @@index([userId])
   @@index([createdAt])
@@ -58,6 +75,10 @@ model StockMovement {
 model DailyInventory {
   id          String               @id @default(cuid())
   date        String               // "YYYY-MM-DD"
+  // Categoría raíz de inventario a la que pertenece esta jornada.
+  // NULL = registro legado/global anterior a la separación por categoría.
+  categoryId  String?
+  category    Category?            @relation(fields: [categoryId], references: [id])
   status      String               @default("open") // "open" | "closed"
   userId      String
   userName    String
@@ -69,8 +90,29 @@ model DailyInventory {
   createdAt   DateTime             @default(now())
   items       DailyInventoryItem[]
 
-  @@unique([date])
+  @@unique([date, categoryId])
   @@index([date])
+  @@index([categoryId])
+}
+
+// Registro de auditoría liviano del módulo de inventario.
+// Retención: 6 meses (se purga lo más antiguo en cada escritura).
+model AuditLog {
+  id           String   @id @default(cuid())
+  action       String   // ej. "daily.open" | "daily.close" | "daily.reopen" | "daily.edit" | "category.create" | "category.permissions.autocreate" | "access.denied"
+  entityType   String   // "DailyInventory" | "Category" | ...
+  entityId     String?
+  categoryId   String?
+  categoryName String?
+  userId       String
+  userName     String
+  summary      String   // descripción liviana y legible de la acción
+  result       String   @default("success") // "success" | "denied"
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action])
+  @@index([categoryId])
 }
 
 model DailyInventoryItem {
@@ -83,6 +125,12 @@ model DailyInventoryItem {
   finalCount       Float?
   unregisteredEntry Float?
   unregisteredExit  Float?
+  // Trazabilidad de la entrada no registrada: por qué no se registró y a qué hora ingresó.
+  unregEntryReason String?
+  unregEntryTime   String?       // "HH:MM"
+  // Snapshot del control por botella al cierre de la jornada (solo ítems de cócteles).
+  bottleLevel      String?
+  reserveBottles   Int?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
