@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { canManageProducts } from "@/lib/permissions";
+import { canCreateProducts } from "@/lib/permissions";
+import { isBottleLevel } from "@/lib/bottle";
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -31,7 +32,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-  if (!canManageProducts(session.user.role)) {
+  if (!canCreateProducts(session.user)) {
     return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
   }
 
@@ -41,6 +42,7 @@ export async function POST(req: Request) {
     unit?: string;
     minStock?: number;
     imageUrl?: string;
+    alertBottleLevel?: string | null;
   };
 
   if (!body.name?.trim() || !body.categoryId || !body.unit?.trim()) {
@@ -54,6 +56,7 @@ export async function POST(req: Request) {
       unit: body.unit.trim(),
       minStock: body.minStock ?? 0,
       imageUrl: body.imageUrl ?? null,
+      alertBottleLevel: isBottleLevel(body.alertBottleLevel) ? body.alertBottleLevel : null,
     },
     include: { category: { select: { id: true, name: true } } },
   });

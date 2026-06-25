@@ -7,12 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ImageUpload } from "./image-upload";
+import { BOTTLE_LEVELS, isBottleLevel, isBottleTrackedSlug } from "@/lib/bottle";
 import { toast } from "sonner";
 
 interface Category {
   id: string;
   name: string;
-  children?: { id: string; name: string }[];
+  slug?: string | null;
+  children?: { id: string; name: string; slug?: string | null }[];
 }
 
 interface ProductFormProps {
@@ -24,6 +26,7 @@ interface ProductFormProps {
     unit: string;
     minStock: number;
     imageUrl: string | null;
+    alertBottleLevel?: string | null;
   };
 }
 
@@ -38,7 +41,20 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
   const [unit, setUnit] = useState(initialData?.unit ?? "");
   const [minStock, setMinStock] = useState(initialData?.minStock?.toString() ?? "0");
   const [imageUrl, setImageUrl] = useState(initialData?.imageUrl ?? "");
+  const [alertBottleLevel, setAlertBottleLevel] = useState<string>(
+    isBottleLevel(initialData?.alertBottleLevel) ? initialData!.alertBottleLevel! : "__default__"
+  );
   const [loading, setLoading] = useState(false);
+
+  const selectedSlug = (() => {
+    for (const cat of categories) {
+      if (cat.id === categoryId) return cat.slug ?? null;
+      const sub = cat.children?.find((c) => c.id === categoryId);
+      if (sub) return sub.slug ?? null;
+    }
+    return null;
+  })();
+  const showBottleAlert = isBottleTrackedSlug(selectedSlug);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -55,6 +71,7 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
       unit,
       minStock: parseFloat(minStock) || 0,
       imageUrl: imageUrl || null,
+      alertBottleLevel: showBottleAlert && alertBottleLevel !== "__default__" ? alertBottleLevel : null,
     };
 
     const res = await fetch(
@@ -91,7 +108,7 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <Label>Categoría{!isEdit && " *"}</Label>
           <Select value={categoryId} onValueChange={setCategoryId}>
@@ -152,6 +169,24 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
         />
         <p className="text-xs text-slate-400">Se generará una alerta cuando el stock baje de este valor</p>
       </div>
+
+      {showBottleAlert && (
+        <div className="space-y-1.5">
+          <Label>Alertar cuando la botella esté en</Label>
+          <Select value={alertBottleLevel} onValueChange={setAlertBottleLevel}>
+            <SelectTrigger>
+              <SelectValue placeholder="Casi vacía (por defecto)" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__default__">Casi vacía (por defecto)</SelectItem>
+              {BOTTLE_LEVELS.map((l) => (
+                <SelectItem key={l.key} value={l.key}>{l.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-slate-400">Para licores de cócteles: nivel a partir del cual se sugiere comprar (si no hay reserva).</p>
+        </div>
+      )}
 
       <div className="space-y-1.5">
         <Label>Foto del producto (opcional)</Label>

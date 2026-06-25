@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { canManageProducts } from "@/lib/permissions";
+import { canEditProducts, canDeleteProducts } from "@/lib/permissions";
+import { isBottleLevel } from "@/lib/bottle";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -20,7 +21,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-  if (!canManageProducts(session.user.role)) {
+  if (!canEditProducts(session.user)) {
     return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
   }
 
@@ -32,6 +33,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     minStock?: number;
     imageUrl?: string;
     active?: boolean;
+    alertBottleLevel?: string | null;
   };
 
   const product = await prisma.product.update({
@@ -43,6 +45,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       ...(body.minStock !== undefined && { minStock: body.minStock }),
       ...(body.imageUrl !== undefined && { imageUrl: body.imageUrl }),
       ...(body.active !== undefined && { active: body.active }),
+      ...(body.alertBottleLevel !== undefined && { alertBottleLevel: isBottleLevel(body.alertBottleLevel) ? body.alertBottleLevel : null }),
     },
     include: { category: { select: { id: true, name: true } } },
   });
@@ -53,7 +56,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-  if (!canManageProducts(session.user.role)) {
+  if (!canDeleteProducts(session.user)) {
     return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
   }
 
