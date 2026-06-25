@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Package, Bell, TrendingUp, TrendingDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatDate, formatStock, getStockStatus } from "@/lib/utils";
+import { needsRestock, isBottleLevel, isBottleTrackedSlug } from "@/lib/bottle";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -16,6 +17,7 @@ export default async function DashboardPage() {
   const [
     totalProducts,
     alertProducts,
+    bottleAlertProducts,
     todayMovements,
     recentMovements,
   ] = await Promise.all([
@@ -23,6 +25,10 @@ export default async function DashboardPage() {
     prisma.product.findMany({
       where: { active: true, minStock: { gt: 0 } },
       select: { currentStock: true, minStock: true },
+    }),
+    prisma.product.findMany({
+      where: { active: true, bottleLevel: { not: null } },
+      select: { bottleLevel: true, reserveBottles: true, alertBottleLevel: true, category: { select: { slug: true } } },
     }),
     prisma.stockMovement.findMany({
       where: { createdAt: { gte: today } },
@@ -36,6 +42,16 @@ export default async function DashboardPage() {
   ]);
 
   const alertCount = alertProducts.filter((p) => p.currentStock <= p.minStock).length;
+  const bottleAlertCount = bottleAlertProducts.filter(
+    (p) =>
+      isBottleTrackedSlug(p.category?.slug ?? null) &&
+      needsRestock(
+        isBottleLevel(p.bottleLevel) ? p.bottleLevel : null,
+        p.reserveBottles,
+        isBottleLevel(p.alertBottleLevel) ? p.alertBottleLevel : null
+      )
+  ).length;
+  const totalAlerts = alertCount + bottleAlertCount;
   const entradasHoy = todayMovements.filter((m) => m.type === "ENTRY").length;
   const salidasHoy = todayMovements.filter((m) => m.type === "EXIT").length;
 
@@ -47,7 +63,7 @@ export default async function DashboardPage() {
 
   const stats = [
     { label: "Productos activos", value: totalProducts, icon: Package, color: "text-blue-600", bg: "bg-blue-50" },
-    { label: "Alertas de stock", value: alertCount, icon: Bell, color: "text-amber-600", bg: "bg-amber-50" },
+    { label: "Alertas de stock", value: totalAlerts, icon: Bell, color: "text-amber-600", bg: "bg-amber-50" },
     { label: "Entradas hoy", value: entradasHoy, icon: TrendingUp, color: "text-emerald-600", bg: "bg-emerald-50" },
     { label: "Salidas hoy", value: salidasHoy, icon: TrendingDown, color: "text-red-600", bg: "bg-red-50" },
   ];
@@ -62,7 +78,7 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-6 max-w-7xl">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Dashboard</h1>
         <p className="text-slate-500 text-sm mt-1">
           Bienvenido, {session.user.name ?? session.user.username}
         </p>
