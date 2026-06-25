@@ -17,17 +17,29 @@ interface AlertItem {
   category: string;
 }
 
-export function AlertasClient({ alerts }: { alerts: AlertItem[] }) {
+interface BottleAlertItem {
+  id: string;
+  name: string;
+  category: string;
+  levelLabel: string;
+  reserve: number;
+}
+
+export function AlertasClient({ alerts, bottleAlerts }: { alerts: AlertItem[]; bottleAlerts: BottleAlertItem[] }) {
   function copyShoppingList() {
     const lines = alerts.map(
       (a) => `• ${a.name} (${a.category}): pedir ${formatStock(a.quantityToOrder, a.unit)}`
     );
-    const text = `Lista de compras — ${new Date().toLocaleDateString("es-CO")}\n\n${lines.join("\n")}`;
+    const bottleLines = bottleAlerts.map(
+      (b) => `• ${b.name} (${b.category}): ${b.levelLabel}, sin reserva → comprar`
+    );
+    const allLines = [...lines, ...bottleLines];
+    const text = `Lista de compras — ${new Date().toLocaleDateString("es-CO")}\n\n${allLines.join("\n")}`;
     navigator.clipboard.writeText(text);
     toast.success("Lista copiada al portapapeles");
   }
 
-  if (alerts.length === 0) {
+  if (alerts.length === 0 && bottleAlerts.length === 0) {
     return (
       <div className="bg-white border border-slate-200 rounded-lg p-12 text-center">
         <CheckCircle className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
@@ -46,8 +58,33 @@ export function AlertasClient({ alerts }: { alerts: AlertItem[] }) {
         </Button>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        <table className="w-full">
+      {bottleAlerts.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              Licores de cócteles por reponer ({bottleAlerts.length})
+            </span>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {bottleAlerts.map((b) => (
+              <div key={b.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-slate-800 truncate">{b.name}</div>
+                  <div className="text-xs text-slate-400">{b.category}</div>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <Badge className="bg-red-100 text-red-700 border-0">{b.levelLabel}, sin reserva</Badge>
+                  <span className="text-xs text-slate-500">Comprar</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {alerts.length > 0 && (
+      <div className="bg-white border border-slate-200 rounded-lg overflow-x-auto">
+        <table className="w-full min-w-[760px]">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
               <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Producto</th>
@@ -86,6 +123,7 @@ export function AlertasClient({ alerts }: { alerts: AlertItem[] }) {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }
