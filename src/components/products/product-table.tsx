@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Pencil, Package, Search, PowerOff, Power } from "lucide-react";
+import { Pencil, Package, Search, PowerOff, Power, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,7 +12,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { getStockStatus, formatStock } from "@/lib/utils";
 import { toast } from "sonner";
 
-interface Category { id: string; name: string }
+interface SubCategory { id: string; name: string }
+interface RootCategory { id: string; name: string; children: SubCategory[] }
 interface Product {
   id: string;
   name: string;
@@ -21,13 +22,20 @@ interface Product {
   minStock: number;
   imageUrl: string | null;
   active: boolean;
-  category: { id: string; name: string } | null;
+  category: { id: string; name: string; parentId: string | null } | null;
 }
 
 interface ProductTableProps {
   products: Product[];
-  categories: Category[];
+  rootCategories: RootCategory[];
   canManage: boolean;
+  canHardDelete: boolean;
+}
+
+/** Raíz a la que pertenece un producto: su categoría si es raíz, o su categoría padre. */
+function rootIdOf(p: Product): string | null {
+  if (!p.category) return null;
+  return p.category.parentId ?? p.category.id;
 }
 
 const stockBadge = {
@@ -43,16 +51,30 @@ const stockLabel = {
 
 type StatusFilter = "all" | "active" | "inactive";
 
-export function ProductTable({ products, categories, canManage }: ProductTableProps) {
+type ActionKind = "activate" | "deactivate" | "hardDelete";
+
+export function ProductTable({ products, rootCategories, canManage, canHardDelete }: ProductTableProps) {
   const router = useRouter();
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [rootFilter, setRootFilter]         = useState("all");
+  const [subFilter, setSubFilter]           = useState("all");
   const [statusFilter, setStatusFilter]     = useState<StatusFilter>("all");
   const [search, setSearch]                 = useState("");
-  const [actionTarget, setActionTarget]     = useState<{ id: string; name: string; activate: boolean } | null>(null);
+  const [actionTarget, setActionTarget]     = useState<{ id: string; name: string; kind: ActionKind } | null>(null);
   const [processing, setProcessing]         = useState(false);
 
+  // Subcategorías de la raíz seleccionada (para el segundo select en cascada).
+  const selectedRoot = rootCategories.find((r) => r.id === rootFilter);
+  const subOptions = selectedRoot?.children ?? [];
+
+  // Al cambiar la raíz, reiniciar la subcategoría.
+  function handleRootChange(value: string) {
+    setRootFilter(value);
+    setSubFilter("all");
+  }
+
   const filtered = products.filter((p) => {
-    const matchesCategory = categoryFilter === "all" || p.category?.id === categoryFilter;
+    const matchesRoot = rootFilter === "all" || rootIdOf(p) === rootFilter;
+    const matchesSub  = subFilter === "all" || p.category?.id === subFilter;
     const matchesStatus   =
       statusFilter === "all" ||
       (statusFilter === "active"   && p.active) ||
@@ -61,29 +83,39 @@ export function ProductTable({ products, categories, canManage }: ProductTablePr
       search.trim() === "" ||
       p.name.toLowerCase().includes(search.trim().toLowerCase()) ||
       (p.category?.name ?? "").toLowerCase().includes(search.trim().toLowerCase());
-    return matchesCategory && matchesStatus && matchesSearch;
+    return matchesRoot && matchesSub && matchesStatus && matchesSearch;
   });
 
   async function confirmAction() {
     if (!actionTarget) return;
+    const { id, name, kind } = actionTarget;
     setProcessing(true);
-    const res = await fetch(`/api/products/${actionTarget.id}`, {
-      method: actionTarget.activate ? "PATCH" : "DELETE",
-      ...(actionTarget.activate && {
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ active: true }),
-      }),
-    });
+    const res = await fetch(
+      kind === "hardDelete" ? `/api/products/${id}?mode=hard` : `/api/products/${id}`,
+      {
+        method: kind === "activate" ? "PATCH" : "DELETE",
+        ...(kind === "activate" && {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ active: true }),
+        }),
+      }
+    );
     setProcessing(false);
     setActionTarget(null);
     if (res.ok) {
-      toast.success(actionTarget.activate
-        ? `"${actionTarget.name}" reactivado`
-        : `"${actionTarget.name}" desactivado`
+      toast.success(
+        kind === "activate" ? `"${name}" reactivado`
+        : kind === "hardDelete" ? `"${name}" eliminado permanentemente`
+        : `"${name}" desactivado`
       );
       router.refresh();
     } else {
-      toast.error("Error al procesar la acción");
+      const data = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
+      if (kind === "hardDelete" && data?.code === "HAS_HISTORY") {
+        toast.error(data.error ?? "El producto tiene historial; desactívalo en su lugar.");
+      } else {
+        toast.error(data?.error ?? "Error al procesar la acción");
+      }
     }
   }
 
@@ -92,29 +124,44 @@ export function ProductTable({ products, categories, canManage }: ProductTablePr
       {/* Filtros */}
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         {/* Búsqueda */}
-        <div className="relative">
+        <div className="relative w-full sm:w-56">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar producto..."
-            className="h-10 pl-9 pr-3 w-56 rounded-md border border-slate-200 bg-white text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+            className="h-10 pl-9 pr-3 w-full rounded-md border border-slate-200 bg-white text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
           />
         </div>
 
-        {/* Filtro por categoría */}
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-48">
+        {/* Filtro por categoría raíz */}
+        <Select value={rootFilter} onValueChange={handleRootChange}>
+          <SelectTrigger className="w-full sm:w-48">
             <SelectValue placeholder="Todas las categorías" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas las categorías</SelectItem>
-            {categories.map((c) => (
+            {rootCategories.map((c) => (
               <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
+
+        {/* Filtro por subcategoría — solo cuando hay una raíz seleccionada con hijos */}
+        {selectedRoot && subOptions.length > 0 && (
+          <Select value={subFilter} onValueChange={setSubFilter}>
+            <SelectTrigger className="w-full sm:w-48">
+              <SelectValue placeholder="Todas las subcategorías" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas las subcategorías</SelectItem>
+              {subOptions.map((s) => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         {/* Filtro por estado */}
         <div className="flex rounded-md border border-slate-200 overflow-hidden text-sm">
@@ -138,8 +185,8 @@ export function ProductTable({ products, categories, canManage }: ProductTablePr
       </div>
 
       {/* Tabla */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
               <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Producto</th>
@@ -217,7 +264,7 @@ export function ProductTable({ products, categories, canManage }: ProductTablePr
                             size="sm"
                             variant="ghost"
                             title="Desactivar producto"
-                            onClick={() => setActionTarget({ id: p.id, name: p.name, activate: false })}
+                            onClick={() => setActionTarget({ id: p.id, name: p.name, kind: "deactivate" })}
                           >
                             <PowerOff className="w-3.5 h-3.5 text-red-400" />
                           </Button>
@@ -226,9 +273,19 @@ export function ProductTable({ products, categories, canManage }: ProductTablePr
                             size="sm"
                             variant="ghost"
                             title="Reactivar producto"
-                            onClick={() => setActionTarget({ id: p.id, name: p.name, activate: true })}
+                            onClick={() => setActionTarget({ id: p.id, name: p.name, kind: "activate" })}
                           >
                             <Power className="w-3.5 h-3.5 text-emerald-500" />
+                          </Button>
+                        )}
+                        {canHardDelete && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            title="Eliminar permanentemente"
+                            onClick={() => setActionTarget({ id: p.id, name: p.name, kind: "hardDelete" })}
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-red-600" />
                           </Button>
                         )}
                       </div>
@@ -251,16 +308,24 @@ export function ProductTable({ products, categories, canManage }: ProductTablePr
       <ConfirmDialog
         open={!!actionTarget}
         onOpenChange={(v) => { if (!v) setActionTarget(null); }}
-        title={actionTarget?.activate
-          ? `Reactivar "${actionTarget?.name}"`
+        title={
+          actionTarget?.kind === "activate"   ? `Reactivar "${actionTarget?.name}"`
+          : actionTarget?.kind === "hardDelete" ? `Eliminar permanentemente "${actionTarget?.name}"`
           : `Desactivar "${actionTarget?.name}"`
         }
-        description={actionTarget?.activate
-          ? "El producto volverá a estar disponible en el inventario diario, movimientos y conteos."
-          : "El producto se mantendrá en el sistema con todo su historial, pero no aparecerá en el inventario diario ni estará disponible para nuevos movimientos."
+        description={
+          actionTarget?.kind === "activate"
+            ? "El producto volverá a estar disponible en el inventario diario, movimientos y conteos."
+            : actionTarget?.kind === "hardDelete"
+            ? "Esta acción es irreversible. El producto se borrará por completo. Solo es posible si no tiene historial (movimientos o inventario diario); de lo contrario deberás desactivarlo."
+            : "El producto se mantendrá en el sistema con todo su historial, pero no aparecerá en el inventario diario ni estará disponible para nuevos movimientos."
         }
-        confirmLabel={actionTarget?.activate ? "Reactivar" : "Desactivar"}
-        variant={actionTarget?.activate ? "default" : "destructive"}
+        confirmLabel={
+          actionTarget?.kind === "activate" ? "Reactivar"
+          : actionTarget?.kind === "hardDelete" ? "Eliminar definitivamente"
+          : "Desactivar"
+        }
+        variant={actionTarget?.kind === "activate" ? "default" : "destructive"}
         loading={processing}
         onConfirm={confirmAction}
       />
