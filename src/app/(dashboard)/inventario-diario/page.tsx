@@ -104,15 +104,16 @@ export default async function InventarioDiarioPage({
   const allProducts = await prisma.product.findMany({
     where: { active: true, categoryId: { in: catIds } },
     include: { category: { select: { name: true, slug: true } } },
-    orderBy: [{ category: { name: "asc" } }, { name: "asc" }],
+    // Orden por subcategoría según el inventario físico, luego nombre.
+    orderBy: [{ category: { sortOrder: "asc" } }, { name: "asc" }],
   });
 
   const existing = await prisma.dailyInventory.findUnique({
     where: { date_categoryId: { date, categoryId: category.id } },
     include: {
       items: {
-        include: { product: { select: { id: true, name: true, unit: true, currentStock: true, bottleLevel: true, reserveBottles: true, category: { select: { slug: true } } } } },
-        orderBy: { product: { name: "asc" } },
+        include: { product: { select: { id: true, name: true, unit: true, currentStock: true, bottleLevel: true, reserveBottles: true, category: { select: { slug: true, sortOrder: true } } } } },
+        orderBy: [{ product: { category: { sortOrder: "asc" } } }, { product: { name: "asc" } }],
       },
     },
   });
