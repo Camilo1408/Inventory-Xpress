@@ -8,30 +8,52 @@ export default async function AlertasPage() {
   const session = await auth();
   if (!session) redirect("/login");
 
-  const products = await prisma.product.findMany({
-    where: { active: true, minStock: { gt: 0 } },
-    include: { category: { select: { name: true } } },
-    orderBy: [{ category: { name: "asc" } }, { name: "asc" }],
-  });
+  const catInclude = {
+    select: {
+      name: true,
+      slug: true,
+      sortOrder: true,
+      parentId: true,
+      parent: { select: { name: true, sortOrder: true } },
+    },
+  } as const;
 
-  const alerts = products
+  const [numericProducts, bottleProducts] = await Promise.all([
+    prisma.product.findMany({
+      where: { active: true, minStock: { gt: 0 } },
+      include: { category: catInclude },
+      orderBy: [{ category: { parent: { sortOrder: "asc" } } }, { category: { sortOrder: "asc" } }, { name: "asc" }],
+    }),
+    prisma.product.findMany({
+      where: { active: true, bottleLevel: { not: null } },
+      include: { category: catInclude },
+      orderBy: [{ category: { parent: { sortOrder: "asc" } } }, { category: { sortOrder: "asc" } }, { name: "asc" }],
+    }),
+  ]);
+
+  function catNames(cat: { name: string; parentId: string | null; parent: { name: string } | null } | null) {
+    if (!cat) return { root: "Sin categoría", sub: "Sin categoría" };
+    return cat.parentId
+      ? { root: cat.parent?.name ?? cat.name, sub: cat.name }
+      : { root: cat.name, sub: cat.name };
+  }
+
+  const alerts = numericProducts
     .filter((p) => p.currentStock <= p.minStock)
-    .map((p) => ({
-      id: p.id,
-      name: p.name,
-      unit: p.unit,
-      currentStock: p.currentStock,
-      minStock: p.minStock,
-      deficit: p.minStock - p.currentStock,
-      quantityToOrder: p.minStock * 2 - p.currentStock,
-      category: p.category?.name ?? "Sin categoría",
-    }));
-
-  const bottleProducts = await prisma.product.findMany({
-    where: { active: true, bottleLevel: { not: null } },
-    include: { category: { select: { name: true, slug: true } } },
-    orderBy: [{ category: { name: "asc" } }, { name: "asc" }],
-  });
+    .map((p) => {
+      const { root, sub } = catNames(p.category);
+      return {
+        id: p.id,
+        name: p.name,
+        unit: p.unit,
+        currentStock: p.currentStock,
+        minStock: p.minStock,
+        deficit: p.minStock - p.currentStock,
+        quantityToOrder: p.minStock * 2 - p.currentStock,
+        rootCategory: root,
+        subCategory: sub,
+      };
+    });
 
   const bottleAlerts = bottleProducts
     .filter((p) => isBottleTrackedSlug(p.category?.slug ?? null))
@@ -42,13 +64,17 @@ export default async function AlertasPage() {
         isBottleLevel(p.alertBottleLevel) ? p.alertBottleLevel : null
       )
     )
-    .map((p) => ({
-      id: p.id,
-      name: p.name,
-      category: p.category?.name ?? "Cócteles",
-      levelLabel: isBottleLevel(p.bottleLevel) ? bottleLevelMeta(p.bottleLevel).label : "—",
-      reserve: p.reserveBottles ?? 0,
-    }));
+    .map((p) => {
+      const { root, sub } = catNames(p.category);
+      return {
+        id: p.id,
+        name: p.name,
+        rootCategory: root,
+        subCategory: sub,
+        levelLabel: isBottleLevel(p.bottleLevel) ? bottleLevelMeta(p.bottleLevel).label : "—",
+        reserve: p.reserveBottles ?? 0,
+      };
+    });
 
   const totalAlerts = alerts.length + bottleAlerts.length;
 

@@ -9,7 +9,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { formatStock, getStockStatus } from "@/lib/utils";
 import { toast } from "sonner";
-import { ChevronDown, Search, X } from "lucide-react";
+import { ChevronDown, Search, X, Ban } from "lucide-react";
+import { isBottleTrackedSlug, isBottleLevel, bottleStock, emptyOpenBottle, type BottleLevel } from "@/lib/bottle";
+import { BottleLevelSelector, BottleLevelBadge, ReserveCounter } from "@/components/inventario/bottle-level-selector";
+import { sanitizeNumericInput } from "@/lib/numeric";
 
 interface Product {
   id: string;
@@ -17,12 +20,14 @@ interface Product {
   unit: string;
   currentStock: number;
   minStock: number;
-  category: { name: string } | null;
+  bottleLevel: string | null;
+  reserveBottles: number | null;
+  category: { name: string; slug: string | null } | null;
 }
 
 const stockBadge = {
-  ok: "bg-emerald-100 text-emerald-700 border-0",
-  low: "bg-amber-100 text-amber-700 border-0",
+  ok:    "bg-emerald-100 text-emerald-700 border-0",
+  low:   "bg-amber-100 text-amber-700 border-0",
   empty: "bg-red-100 text-red-700 border-0",
 };
 
@@ -51,17 +56,14 @@ function ProductCombobox({
       )
     : products;
 
-  // Reset highlight when results change
   useEffect(() => { setHighlighted(0); }, [search]);
 
-  // Scroll highlighted item into view
   useEffect(() => {
     if (!listRef.current) return;
     const item = listRef.current.children[highlighted] as HTMLElement | undefined;
     item?.scrollIntoView({ block: "nearest" });
   }, [highlighted]);
 
-  // Close on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (!containerRef.current?.contains(e.target as Node)) {
@@ -103,7 +105,9 @@ function ProductCombobox({
     }
   }
 
-  const displayValue = open ? search : (selected ? `${selected.name}${selected.category ? ` — ${selected.category.name}` : ""}` : "");
+  const displayValue = open
+    ? search
+    : (selected ? `${selected.name}${selected.category ? ` — ${selected.category.name}` : ""}` : "");
 
   return (
     <div ref={containerRef} className="relative">
@@ -166,119 +170,290 @@ function ProductCombobox({
 
 // ─── Formulario de movimiento ─────────────────────────────────────────────────
 
+type NumericType = "ENTRY" | "EXIT" | "ADJUSTMENT";
+type BottleType  = "ENTRY" | "EXIT" | "BOTTLE_ADJUST";
+
 export function MovementForm({ products, canAdjust }: { products: Product[]; canAdjust: boolean }) {
   const router = useRouter();
-  const [productId, setProductId] = useState("");
-  const [type, setType] = useState<"ENTRY" | "EXIT" | "ADJUSTMENT">("ENTRY");
-  const [quantity, setQuantity] = useState("");
-  const [notes, setNotes] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [productId, setProductId]     = useState("");
+  const [numericType, setNumericType] = useState<NumericType>("ENTRY");
+  const [bottleType, setBottleType]   = useState<BottleType>("BOTTLE_ADJUST");
+  const [quantity, setQuantity]       = useState("");
+  const [notes, setNotes]             = useState("");
+  const [loading, setLoading]         = useState(false);
+
+  // Estado botella
+  const [bottleLevel, setBottleLevel]     = useState<BottleLevel | null>(null);
+  const [reserveBottles, setReserveBottles] = useState(0);
 
   const selectedProduct = products.find((p) => p.id === productId);
+  const isBottle = isBottleTrackedSlug(selectedProduct?.category?.slug ?? null);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!productId || !quantity) {
-      toast.error("Selecciona un producto e ingresa la cantidad");
-      return;
-    }
+  // Sincronizar estado de botella al cambiar producto
+  useEffect(() => {
+    if (!selectedProduct) return;
+    const lvl = isBottleLevel(selectedProduct.bottleLevel) ? selectedProduct.bottleLevel as BottleLevel : null;
+    setBottleLevel(lvl);
+    setReserveBottles(selectedProduct.reserveBottles ?? 0);
+    setQuantity("");
+    setNotes("");
+  }, [productId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const qty = parseFloat(quantity);
-    if (isNaN(qty) || qty === 0) {
-      toast.error("Cantidad inválida");
-      return;
-    }
+  function resetForm() {
+    setProductId("");
+    setQuantity("");
+    setNotes("");
+    setBottleLevel(null);
+    setReserveBottles(0);
+  }
 
+  // ── Submit para productos de BOTELLA ────────────────────────────────────────
+  async function handleBottleSubmit() {
     setLoading(true);
-
     const res = await fetch("/api/movements", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ productId, type, quantity: qty, notes: notes.trim() || undefined }),
+      body: JSON.stringify({
+        productId,
+        type: bottleType,
+        ...(bottleType === "BOTTLE_ADJUST"
+          ? { bottleLevel, reserveBottles }
+          : { quantity: Math.ceil(parseFloat(quantity) || 0) }),
+        notes: notes.trim() || undefined,
+      }),
     });
-
-    const data = await res.json() as { error?: string; product?: { currentStock: number } };
+    const data = await res.json() as {
+      error?: string;
+      product?: { currentStock: number; bottleLevel?: string | null; reserveBottles?: number | null };
+    };
     setLoading(false);
 
-    if (res.ok) {
-      toast.success(`Movimiento registrado. Stock: ${data.product ? formatStock(data.product.currentStock, selectedProduct?.unit ?? "") : ""}`);
-      setProductId("");
-      setQuantity("");
-      setNotes("");
+    if (res.ok && data.product) {
+      const total = data.product.currentStock;
+      toast.success(
+        `Registrado. Disponibles: ${total} botella${total !== 1 ? "s" : ""}`
+      );
+      resetForm();
       router.refresh();
     } else {
       toast.error(data.error ?? "Error al registrar movimiento");
     }
   }
 
+  // ── Submit para productos NUMÉRICOS ─────────────────────────────────────────
+  async function handleNumericSubmit() {
+    if (!quantity) {
+      toast.error("Ingresa la cantidad");
+      return;
+    }
+    const qty = parseFloat(quantity);
+    if (isNaN(qty) || qty === 0) {
+      toast.error("Cantidad inválida");
+      return;
+    }
+    setLoading(true);
+    const res = await fetch("/api/movements", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productId, type: numericType, quantity: qty, notes: notes.trim() || undefined }),
+    });
+    const data = await res.json() as { error?: string; product?: { currentStock: number } };
+    setLoading(false);
+
+    if (res.ok) {
+      toast.success(
+        `Movimiento registrado. Stock: ${data.product ? formatStock(data.product.currentStock, selectedProduct?.unit ?? "") : ""}`
+      );
+      resetForm();
+      router.refresh();
+    } else {
+      toast.error(data.error ?? "Error al registrar movimiento");
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!productId) {
+      toast.error("Selecciona un producto");
+      return;
+    }
+    if (isBottle) {
+      await handleBottleSubmit();
+    } else {
+      await handleNumericSubmit();
+    }
+  }
+
+  // ─── Render ────────────────────────────────────────────────────────────────
+  const totalBottleStock = bottleStock(selectedProduct?.bottleLevel, selectedProduct?.reserveBottles);
+
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      {/* Producto */}
       <div className="space-y-1.5">
         <Label>Producto *</Label>
         <ProductCombobox products={products} value={productId} onChange={setProductId} />
       </div>
 
+      {/* Info del producto seleccionado */}
       {selectedProduct && (
-        <div className="bg-slate-50 rounded-md p-3 flex items-center gap-3 text-sm">
-          <span className="text-slate-600">Stock actual:</span>
-          <span className="font-semibold tabular-nums">
-            {formatStock(selectedProduct.currentStock, selectedProduct.unit)}
-          </span>
-          <Badge className={stockBadge[getStockStatus(selectedProduct.currentStock, selectedProduct.minStock)]}>
-            {getStockStatus(selectedProduct.currentStock, selectedProduct.minStock) === "ok" ? "En stock" :
-             getStockStatus(selectedProduct.currentStock, selectedProduct.minStock) === "low" ? "Bajo mínimo" : "Sin stock"}
-          </Badge>
-        </div>
+        isBottle ? (
+          <div className="bg-slate-50 rounded-md p-3 space-y-2 text-sm">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-slate-500">Botella abierta:</span>
+              <BottleLevelBadge level={selectedProduct.bottleLevel as BottleLevel | null} />
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="text-slate-500">
+                Reserva: <span className="font-semibold text-slate-800">{selectedProduct.reserveBottles ?? 0}</span>
+              </span>
+              <span className="text-slate-500">
+                Total disponible:{" "}
+                <span className={`font-semibold ${totalBottleStock > 0 ? "text-emerald-600" : "text-red-500"}`}>
+                  {totalBottleStock} botella{totalBottleStock !== 1 ? "s" : ""}
+                </span>
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-slate-50 rounded-md p-3 flex items-center gap-3 text-sm">
+            <span className="text-slate-600">Stock actual:</span>
+            <span className="font-semibold tabular-nums">
+              {formatStock(selectedProduct.currentStock, selectedProduct.unit)}
+            </span>
+            <Badge className={stockBadge[getStockStatus(selectedProduct.currentStock, selectedProduct.minStock)]}>
+              {getStockStatus(selectedProduct.currentStock, selectedProduct.minStock) === "ok" ? "En stock" :
+               getStockStatus(selectedProduct.currentStock, selectedProduct.minStock) === "low" ? "Bajo mínimo" : "Sin stock"}
+            </Badge>
+          </div>
+        )
       )}
 
+      {/* Tipo de movimiento */}
       <div className="space-y-1.5">
         <Label>Tipo de movimiento *</Label>
-        <div className="flex gap-2">
-          {(["ENTRY", "EXIT", ...(canAdjust ? ["ADJUSTMENT"] : [])] as Array<"ENTRY" | "EXIT" | "ADJUSTMENT">).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setType(t)}
-              className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors ${
-                type === t
-                  ? t === "ENTRY"
-                    ? "bg-blue-600 text-white border-blue-600"
-                    : t === "EXIT"
-                    ? "bg-red-600 text-white border-red-600"
+        {isBottle ? (
+          <div className="flex gap-2">
+            {(["ENTRY", "EXIT", ...(canAdjust ? ["BOTTLE_ADJUST"] : [])] as BottleType[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setBottleType(t)}
+                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors ${
+                  bottleType === t
+                    ? t === "ENTRY"      ? "bg-blue-600 text-white border-blue-600"
+                    : t === "EXIT"       ? "bg-red-600 text-white border-red-600"
                     : "bg-slate-700 text-white border-slate-700"
-                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-              }`}
-            >
-              {t === "ENTRY" ? "Entrada" : t === "EXIT" ? "Salida" : "Ajuste"}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="quantity">Cantidad *</Label>
-        <Input
-          id="quantity"
-          type="number"
-          step="0.5"
-          min={type === "ADJUSTMENT" ? undefined : "0.5"}
-          value={quantity}
-          onChange={(e) => setQuantity(e.target.value)}
-          placeholder="0"
-          required
-        />
-        {type === "ADJUSTMENT" && (
-          <p className="text-xs text-slate-400">Usa valores positivos para aumentar, negativos para disminuir</p>
+                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                {t === "ENTRY" ? "Entrada" : t === "EXIT" ? "Salida" : "Ajuste Nivel"}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            {(["ENTRY", "EXIT", ...(canAdjust ? ["ADJUSTMENT"] : [])] as NumericType[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setNumericType(t)}
+                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors ${
+                  numericType === t
+                    ? t === "ENTRY"      ? "bg-blue-600 text-white border-blue-600"
+                    : t === "EXIT"       ? "bg-red-600 text-white border-red-600"
+                    : "bg-slate-700 text-white border-slate-700"
+                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                {t === "ENTRY" ? "Entrada" : t === "EXIT" ? "Salida" : "Ajuste"}
+              </button>
+            ))}
+          </div>
         )}
       </div>
 
+      {/* Inputs según tipo de producto / movimiento */}
+      {isBottle && bottleType === "BOTTLE_ADJUST" ? (
+        // ─── Ajuste de nivel de botella ──────────────────────────────────────
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Nivel de la botella abierta</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <BottleLevelSelector
+                value={bottleLevel}
+                onChange={setBottleLevel}
+              />
+              {/* Marcar la botella abierta como vacía/consumida.
+                  Si hay reserva, destapa una nueva (reserva −1, nivel Llena). */}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = emptyOpenBottle(reserveBottles);
+                  setBottleLevel(next.level);
+                  setReserveBottles(next.reserve);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-50"
+              >
+                <Ban className="w-3.5 h-3.5" />
+                Vaciar
+              </button>
+            </div>
+            <p className="text-xs text-slate-400">
+              {bottleLevel === null
+                ? "Sin botella abierta y sin reserva — stock disponible quedará en 0."
+                : "Botella abierta con contenido — cuenta como +1 disponible. Al vaciarla, si hay reserva se destapa una nueva."}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Botellas en reserva (cerradas)</Label>
+            <ReserveCounter value={reserveBottles} onChange={setReserveBottles} />
+            <p className="text-xs text-slate-400">
+              Total disponible tras el ajuste:{" "}
+              <strong>{bottleStock(bottleLevel, reserveBottles)}</strong> botella
+              {bottleStock(bottleLevel, reserveBottles) !== 1 ? "s" : ""}
+            </p>
+          </div>
+        </div>
+      ) : (
+        // ─── Cantidad numérica (ENTRY / EXIT — botella o normal) ─────────────
+        <div className="space-y-1.5">
+          <Label htmlFor="quantity">
+            {isBottle ? "Cantidad de botellas *" : "Cantidad *"}
+          </Label>
+          <Input
+            id="quantity"
+            type="text"
+            inputMode="decimal"
+            value={quantity}
+            onChange={(e) => setQuantity(sanitizeNumericInput(e.target.value))}
+            placeholder="0"
+            required
+          />
+          {!isBottle && numericType === "ADJUSTMENT" && (
+            <p className="text-xs text-slate-400">Usa valores positivos para aumentar, negativos para disminuir</p>
+          )}
+          {isBottle && (
+            <p className="text-xs text-slate-400">
+              {bottleType === "ENTRY"
+                ? "Botellas que se agregan a la reserva (cerradas)."
+                : "Botellas que se retiran de la reserva."}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Observaciones */}
       <div className="space-y-1.5">
         <Label htmlFor="notes">Observaciones (opcional)</Label>
         <Textarea
           id="notes"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="Ej: Compra semanal, merma..."
+          placeholder={isBottle && bottleType === "BOTTLE_ADJUST"
+            ? "Ej: Revisión semanal, apertura de nueva botella..."
+            : "Ej: Compra semanal, merma..."}
           rows={2}
         />
       </div>

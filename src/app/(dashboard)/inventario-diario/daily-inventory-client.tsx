@@ -19,7 +19,8 @@ import {
 } from "@/components/ui/dialog";
 import { formatStock } from "@/lib/utils";
 import { BottleLevelSelector, ReserveCounter, BottleLevelBadge } from "@/components/inventario/bottle-level-selector";
-import { isBottleTrackedSlug, isBottleLevel, type BottleLevel } from "@/lib/bottle";
+import { isBottleTrackedSlug, isBottleLevel, emptyOpenBottle, type BottleLevel } from "@/lib/bottle";
+import { sanitizeNumericInput } from "@/lib/numeric";
 import {
   ClipboardList,
   CheckCircle2,
@@ -31,6 +32,7 @@ import {
   ChevronDown,
   ChevronLeft,
   CalendarDays,
+  Ban,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -509,10 +511,30 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
                   <div key={p.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
                     <span className="font-medium text-slate-800 text-sm">{p.name}</span>
                     <div className="flex flex-wrap items-center gap-4">
-                      <BottleLevelSelector
-                        value={levels[p.id] ?? null}
-                        onChange={(v) => setLevels((prev) => ({ ...prev, [p.id]: v }))}
-                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <BottleLevelSelector
+                          value={levels[p.id] ?? null}
+                          onChange={(v) => setLevels((prev) => ({ ...prev, [p.id]: v }))}
+                        />
+                        {/* Vaciar: si hay reserva destapa una nueva (reserva −1, Llena). */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = emptyOpenBottle(reserves[p.id] ?? 0);
+                            setReserves((prev) => ({ ...prev, [p.id]: next.reserve }));
+                            setLevels((prev) => {
+                              const m = { ...prev };
+                              if (next.level === null) delete m[p.id];
+                              else m[p.id] = next.level;
+                              return m;
+                            });
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-50"
+                        >
+                          <Ban className="w-3.5 h-3.5" />
+                          Vaciar
+                        </button>
+                      </div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-slate-500">Reserva</span>
                         <ReserveCounter
@@ -544,12 +566,11 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
                         </td>
                         <td className="px-4 py-2.5 text-right">
                           <Input
-                            type="number"
-                            min="0"
-                            step="0.5"
+                            type="text"
+                            inputMode="decimal"
                             className={`w-28 ml-auto text-right tabular-nums ${isEmpty ? "border-red-300 focus-visible:ring-red-400" : ""}`}
                             value={counts[p.id] ?? ""}
-                            onChange={(e) => setCounts((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                            onChange={(e) => setCounts((prev) => ({ ...prev, [p.id]: sanitizeNumericInput(e.target.value) }))}
                             placeholder="0"
                           />
                         </td>
@@ -960,10 +981,30 @@ function OpenView({
                 <div key={i.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
                   <span className="font-medium text-slate-800 text-sm">{i.product.name}</span>
                   <div className="flex flex-wrap items-center gap-4">
-                    <BottleLevelSelector
-                      value={bottleLevels[i.productId] ?? null}
-                      onChange={(v) => setBottleLevels((prev) => ({ ...prev, [i.productId]: v }))}
-                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <BottleLevelSelector
+                        value={bottleLevels[i.productId] ?? null}
+                        onChange={(v) => setBottleLevels((prev) => ({ ...prev, [i.productId]: v }))}
+                      />
+                      {/* Vaciar: si hay reserva destapa una nueva (reserva −1, Llena). */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = emptyOpenBottle(bottleReserves[i.productId] ?? 0);
+                          setBottleReserves((prev) => ({ ...prev, [i.productId]: next.reserve }));
+                          setBottleLevels((prev) => {
+                            const m = { ...prev };
+                            if (next.level === null) delete m[i.productId];
+                            else m[i.productId] = next.level;
+                            return m;
+                          });
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-50"
+                      >
+                        <Ban className="w-3.5 h-3.5" />
+                        Vaciar
+                      </button>
+                    </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-slate-500">Reserva</span>
                       <ReserveCounter
@@ -1011,26 +1052,24 @@ function OpenView({
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       <Input
-                        type="number"
-                        min="0"
-                        step="0.5"
+                        type="text"
+                        inputMode="decimal"
                         className="w-24 ml-auto text-right tabular-nums"
                         value={r.entryStr}
                         onChange={(e) =>
-                          setUnregEntries((prev) => ({ ...prev, [r.item.productId]: e.target.value }))
+                          setUnregEntries((prev) => ({ ...prev, [r.item.productId]: sanitizeNumericInput(e.target.value) }))
                         }
                         placeholder={r.autoEntry > 0 ? `auto ${r.autoEntry}` : "0"}
                       />
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       <Input
-                        type="number"
-                        min="0"
-                        step="0.5"
+                        type="text"
+                        inputMode="decimal"
                         className="w-24 ml-auto text-right tabular-nums"
                         value={r.exitStr}
                         onChange={(e) =>
-                          setUnregExits((prev) => ({ ...prev, [r.item.productId]: e.target.value }))
+                          setUnregExits((prev) => ({ ...prev, [r.item.productId]: sanitizeNumericInput(e.target.value) }))
                         }
                         placeholder={r.autoExit > 0 ? `auto ${r.autoExit}` : "0"}
                       />
@@ -1040,15 +1079,14 @@ function OpenView({
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       <Input
-                        type="number"
-                        min="0"
-                        step="0.5"
+                        type="text"
+                        inputMode="decimal"
                         className={`w-24 ml-auto text-right tabular-nums ${
                           finalIsEmpty ? "border-red-300 focus-visible:ring-red-400" : ""
                         }`}
                         value={r.finalStr}
                         onChange={(e) =>
-                          setFinalCounts((prev) => ({ ...prev, [r.item.productId]: e.target.value }))
+                          setFinalCounts((prev) => ({ ...prev, [r.item.productId]: sanitizeNumericInput(e.target.value) }))
                         }
                         placeholder="0"
                       />

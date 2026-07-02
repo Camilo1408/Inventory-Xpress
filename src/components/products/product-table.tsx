@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { getStockStatus, formatStock } from "@/lib/utils";
 import { toast } from "sonner";
+import { BottleLevelBadge } from "@/components/inventario/bottle-level-selector";
+import { isBottleTrackedSlug, bottleStock, type BottleLevel } from "@/lib/bottle";
 
 interface SubCategory { id: string; name: string }
 interface RootCategory { id: string; name: string; children: SubCategory[] }
@@ -22,7 +24,10 @@ interface Product {
   minStock: number;
   imageUrl: string | null;
   active: boolean;
-  category: { id: string; name: string; parentId: string | null } | null;
+  bottleLevel: string | null;
+  reserveBottles: number | null;
+  alertBottleLevel: string | null;
+  category: { id: string; name: string; slug: string | null; parentId: string | null } | null;
 }
 
 interface ProductTableProps {
@@ -199,7 +204,15 @@ export function ProductTable({ products, rootCategories, canManage, canHardDelet
           </thead>
           <tbody className="divide-y divide-slate-100">
             {filtered.map((p) => {
+              const isBottle = isBottleTrackedSlug(p.category?.slug);
               const status = getStockStatus(p.currentStock, p.minStock);
+              const bottleLevel = p.bottleLevel as BottleLevel | null;
+              // Estado de botella: 0 = sin stock, solo la abierta sin reserva = bajo,
+              // con reserva (>=1 cerrada) = en stock.
+              const bottleTotal = isBottle ? bottleStock(bottleLevel, p.reserveBottles) : 0;
+              const bottleReserve = p.reserveBottles ?? 0;
+              const bottleStatus: "empty" | "low" | "ok" =
+                bottleTotal === 0 ? "empty" : bottleReserve === 0 ? "low" : "ok";
               return (
                 <tr
                   key={p.id}
@@ -240,16 +253,28 @@ export function ProductTable({ products, rootCategories, canManage, canHardDelet
                     }
                   </td>
                   <td className="px-4 py-3 text-right text-sm font-semibold text-slate-800 tabular-nums">
-                    {formatStock(p.currentStock, p.unit)}
+                    {isBottle ? (
+                      <div className="flex items-center justify-end gap-2">
+                        <BottleLevelBadge level={bottleLevel} />
+                        {(p.reserveBottles ?? 0) > 0 && (
+                          <span className="text-xs text-slate-400">+{p.reserveBottles} res.</span>
+                        )}
+                      </div>
+                    ) : (
+                      formatStock(p.currentStock, p.unit)
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right text-sm text-slate-400 tabular-nums">
-                    {p.minStock > 0 ? formatStock(p.minStock, p.unit) : "—"}
+                    {isBottle ? "—" : (p.minStock > 0 ? formatStock(p.minStock, p.unit) : "—")}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    {p.active
-                      ? <Badge className={stockBadge[status]}>{stockLabel[status]}</Badge>
-                      : <Badge className="bg-slate-100 text-slate-400 border-0">Inactivo</Badge>
-                    }
+                    {!p.active ? (
+                      <Badge className="bg-slate-100 text-slate-400 border-0">Inactivo</Badge>
+                    ) : isBottle ? (
+                      <Badge className={stockBadge[bottleStatus]}>{stockLabel[bottleStatus]}</Badge>
+                    ) : (
+                      <Badge className={stockBadge[status]}>{stockLabel[status]}</Badge>
+                    )}
                   </td>
                   {canManage && (
                     <td className="px-4 py-3">

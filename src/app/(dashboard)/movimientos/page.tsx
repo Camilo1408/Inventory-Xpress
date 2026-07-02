@@ -13,8 +13,8 @@ export default async function MovimientosPage() {
 
   const products = await prisma.product.findMany({
     where: { active: true },
-    include: { category: { select: { name: true } } },
-    orderBy: { name: "asc" },
+    include: { category: { select: { name: true, slug: true } } },
+    orderBy: [{ category: { sortOrder: "asc" } }, { name: "asc" }],
   });
 
   const canAdjust = canAdjustStock(session.user);

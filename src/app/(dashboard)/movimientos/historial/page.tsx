@@ -21,7 +21,16 @@ export default async function HistorialPage({
       ...(type && { type }),
       ...(productId && { productId }),
     },
-    include: { product: { select: { name: true, unit: true } } },
+    select: {
+      id: true,
+      type: true,
+      source: true,
+      quantity: true,
+      notes: true,
+      userName: true,
+      createdAt: true,
+      product: { select: { name: true, unit: true } },
+    },
     orderBy: { createdAt: "desc" },
     skip: (page - 1) * limit,
     take: limit,
@@ -34,12 +43,27 @@ export default async function HistorialPage({
     },
   });
 
-  const typeBadge = {
-    ENTRY: "bg-blue-100 text-blue-700 border-0",
-    EXIT: "bg-red-100 text-red-700 border-0",
-    ADJUSTMENT: "bg-slate-100 text-slate-600 border-0",
+  const typeBadge: Record<string, string> = {
+    ENTRY:         "bg-blue-100 text-blue-700 border-0",
+    EXIT:          "bg-red-100 text-red-700 border-0",
+    ADJUSTMENT:    "bg-slate-100 text-slate-600 border-0",
+    BOTTLE_ADJUST: "bg-purple-100 text-purple-700 border-0",
   };
-  const typeLabel = { ENTRY: "Entrada", EXIT: "Salida", ADJUSTMENT: "Ajuste" };
+  const typeLabel: Record<string, string> = {
+    ENTRY:         "Entrada",
+    EXIT:          "Salida",
+    ADJUSTMENT:    "Ajuste",
+    BOTTLE_ADJUST: "Ajuste Botella",
+  };
+
+  function resolveLabel(type: string, source: string | null) {
+    if (source === "bottle_adjust") return "Ajuste Botella";
+    return typeLabel[type] ?? type;
+  }
+  function resolveBadge(type: string, source: string | null) {
+    if (source === "bottle_adjust") return typeBadge.BOTTLE_ADJUST;
+    return typeBadge[type] ?? "bg-slate-100 text-slate-600 border-0";
+  }
 
   return (
     <div>
@@ -69,8 +93,8 @@ export default async function HistorialPage({
                 </td>
                 <td className="px-4 py-3 text-sm font-medium text-slate-800">{m.product.name}</td>
                 <td className="px-4 py-3 text-center">
-                  <Badge className={typeBadge[m.type as keyof typeof typeBadge]}>
-                    {typeLabel[m.type as keyof typeof typeLabel]}
+                  <Badge className={resolveBadge(m.type, m.source)}>
+                    {resolveLabel(m.type, m.source)}
                   </Badge>
                 </td>
                 <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums">

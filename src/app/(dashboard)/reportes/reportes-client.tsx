@@ -35,6 +35,7 @@ export function ReportesClient({ categories }: { categories: Category[] }) {
   const [rows, setRows]                   = useState<ReportRow[]>([]);
   const [loading, setLoading]             = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [subcategoryFilter, setSubcategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter]   = useState<StatusFilter>("active");
   const [search, setSearch]               = useState("");
 
@@ -51,8 +52,20 @@ export function ReportesClient({ categories }: { categories: Category[] }) {
 
   useEffect(() => { void fetchReport(); }, [fetchReport]);
 
+  // Subcategorías disponibles según la categoría seleccionada (derivadas de las
+  // filas). Con "Todas las categorías" se listan todas las subcategorías presentes.
+  const subcategoryOptions = Array.from(
+    new Set(
+      rows
+        .filter((r) => categoryFilter === "all" || r.category === categoryFilter)
+        .map((r) => r.subcategory)
+        .filter((s): s is string => !!s)
+    )
+  ).sort((a, b) => a.localeCompare(b));
+
   const filtered = rows.filter((r) => {
     if (categoryFilter !== "all" && r.category !== categoryFilter) return false;
+    if (subcategoryFilter !== "all" && r.subcategory !== subcategoryFilter) return false;
     if (statusFilter === "active"   && !r.active) return false;
     if (statusFilter === "inactive" &&  r.active) return false;
     if (search.trim() && !r.name.toLowerCase().includes(search.trim().toLowerCase())) return false;
@@ -80,8 +93,8 @@ export function ReportesClient({ categories }: { categories: Category[] }) {
           </SelectContent>
         </Select>
 
-        {/* Categoría */}
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+        {/* Categoría raíz */}
+        <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v); setSubcategoryFilter("all"); }}>
           <SelectTrigger className="w-48">
             <SelectValue placeholder="Todas las categorías" />
           </SelectTrigger>
@@ -92,6 +105,21 @@ export function ReportesClient({ categories }: { categories: Category[] }) {
             ))}
           </SelectContent>
         </Select>
+
+        {/* Subcategoría — solo cuando hay una raíz seleccionada con opciones */}
+        {categoryFilter !== "all" && subcategoryOptions.length > 0 && (
+          <Select value={subcategoryFilter} onValueChange={setSubcategoryFilter}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Todas las subcategorías" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas las subcategorías</SelectItem>
+              {subcategoryOptions.map((s) => (
+                <SelectItem key={s} value={s}>{s}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         {/* Estado */}
         <div className="flex rounded-md border border-slate-200 overflow-hidden text-sm">

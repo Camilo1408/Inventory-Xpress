@@ -58,6 +58,33 @@ export function isBottleTrackedSlug(slug: string | null | undefined): boolean {
 }
 
 /**
+ * Stock total disponible de un licor de cócteles:
+ *   botellas en reserva + 1 si existe botella abierta con contenido (bottleLevel != null).
+ * Cualquier nivel registrado (incluso "almost_empty") significa que hay contenido.
+ * null = sin botella abierta = no suma al total.
+ */
+export function bottleStock(
+  level: string | null | undefined,
+  reserve: number | null | undefined
+): number {
+  const openBottle = level != null ? 1 : 0;
+  return (reserve ?? 0) + openBottle;
+}
+
+/**
+ * Transición al marcar la botella abierta como vacía/consumida:
+ *   - Si hay botellas en reserva, se destapa una nueva: reserva − 1 y nivel "full".
+ *   - Si no hay reserva, queda sin botella abierta (nivel null) → stock 0.
+ */
+export function emptyOpenBottle(
+  reserve: number | null | undefined
+): { level: BottleLevel | null; reserve: number } {
+  const r = reserve ?? 0;
+  if (r > 0) return { level: "full", reserve: r - 1 };
+  return { level: null, reserve: 0 };
+}
+
+/**
  * Regla de alerta de compra:
  *   orden(nivel) <= orden(umbral ?? default)  Y  (reserva ?? 0) === 0
  * Un producto sin nivel registrado (null) nunca alerta.

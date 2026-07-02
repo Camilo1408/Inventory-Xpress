@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { canDailyCategory, canDoStockCount, canReopenDailyInventory, type DailyAction } from "@/lib/permissions";
-import { isBottleTrackedSlug, isBottleLevel } from "@/lib/bottle";
+import { isBottleTrackedSlug, isBottleLevel, bottleStock } from "@/lib/bottle";
 import { audit } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -319,7 +319,12 @@ export async function PATCH(
       });
       await tx.product.update({
         where: { id: fc.productId },
-        data: { bottleLevel: level, reserveBottles: reserve },
+        data: {
+          bottleLevel: level,
+          reserveBottles: reserve,
+          // Mantener currentStock sincronizado: reserva + 1 si hay botella abierta.
+          currentStock: bottleStock(level, reserve),
+        },
       });
     }
 
