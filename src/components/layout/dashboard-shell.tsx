@@ -11,6 +11,9 @@ interface DashboardShellProps {
   canManageCategories: boolean;
   canManageUsers: boolean;
   canViewAudit: boolean;
+  canViewReports: boolean;
+  canDoStockCount: boolean;
+  canView: boolean;
   userName: string;
   role: string;
   children: React.ReactNode;
@@ -23,6 +26,9 @@ export function DashboardShell({
   canManageCategories,
   canManageUsers,
   canViewAudit,
+  canViewReports,
+  canDoStockCount,
+  canView,
   userName,
   role,
   children,
@@ -47,6 +53,9 @@ export function DashboardShell({
         canManageCategories={canManageCategories}
         canManageUsers={canManageUsers}
         canViewAudit={canViewAudit}
+        canViewReports={canViewReports}
+        canDoStockCount={canDoStockCount}
+        canView={canView}
         mobileOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}
       />

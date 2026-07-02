@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { canManageCategories, canManageUsers, isAdminRole } from "@/lib/permissions";
+import { canManageCategories, canManageUsers, canViewAudit, canViewReports, canDoStockCount, can, INV } from "@/lib/permissions";
 
 export default async function DashboardLayout({
   children,
@@ -28,7 +28,10 @@ export default async function DashboardLayout({
       nominaUrl={nominaUrl}
       canManageCategories={canManageCategories(session.user)}
       canManageUsers={canManageUsers(session.user)}
-      canViewAudit={isAdminRole(session.user)}
+      canViewAudit={canViewAudit(session.user)}
+      canViewReports={canViewReports(session.user)}
+      canDoStockCount={canDoStockCount(session.user)}
+      canView={can(session.user, INV.VIEW)}
       userName={session.user.name ?? session.user.username}
       role={session.user.role}
     >

@@ -9,11 +9,13 @@ Sistema web de gestión de inventario para restaurante. Controla stock de barra 
 - `pnpm lint` — ESLint
 - `npx prisma generate` — Regenerar cliente Prisma tras cambios de schema
 - `npx prisma db push` — Aplicar schema a la DB (dev local)
-- `npx tsx prisma/seed.ts` — Insertar datos iniciales (categorías + SUPERADMIN)
+- `npx tsx prisma/seed.ts` — Insertar datos iniciales (categorías + usuarios demo por rol)
 
 ## Credenciales demo (modo standalone)
 
-- SUPERADMIN: admin / admin123
+- SUPERADMIN: superadmin / superadmin123 — acceso completo
+- ADMIN: admin / admin123 — todo excepto crear/editar productos y categorías, y gestión de usuarios/roles
+- EMPLOYEE: empleado / empleado123 — inventario diario, movimientos, ver productos/alertas, dashboard
 
 ## Tech Stack
 

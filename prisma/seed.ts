@@ -20,19 +20,36 @@ async function main() {
   }
   console.log("✓ Categorías creadas:", categorias.join(", "));
 
-  // SUPERADMIN para modo standalone
-  const passwordHash = await bcrypt.hash("admin123", 12);
-  await prisma.user.upsert({
-    where: { username: "admin" },
-    update: {},
-    create: {
-      username: "admin",
-      passwordHash,
-      name: "Administrador",
-      role: "SUPERADMIN",
-    },
-  });
-  console.log("✓ SUPERADMIN creado: admin / admin123");
+  // Usuarios demo (modo standalone) — uno por cada rol base.
+  const demoUsers = [
+    { username: "superadmin", password: "superadmin123", name: "Super Administrador", role: "SUPERADMIN" },
+    { username: "admin",      password: "admin123",      name: "Administrador",        role: "ADMIN" },
+    { username: "empleado",   password: "empleado123",   name: "Empleado",             role: "EMPLOYEE" },
+  ];
+
+  for (const u of demoUsers) {
+    const passwordHash = await bcrypt.hash(u.password, 12);
+    await prisma.user.upsert({
+      where: { username: u.username },
+      // Reset determinista: rol, contraseña y limpieza de rol personalizado/overrides.
+      update: {
+        passwordHash,
+        name: u.name,
+        role: u.role,
+        active: true,
+        customRoleId: null,
+        permsGrant: "[]",
+        permsRevoke: "[]",
+      },
+      create: {
+        username: u.username,
+        passwordHash,
+        name: u.name,
+        role: u.role,
+      },
+    });
+    console.log(`✓ Usuario ${u.role}: ${u.username} / ${u.password}`);
+  }
 }
 
 main()

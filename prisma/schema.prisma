@@ -146,8 +146,31 @@ model User {
   username     String   @unique
   passwordHash String
   name         String?
+  // Rol base: SUPERADMIN | ADMIN | EMPLOYEE
   role         String   @default("EMPLOYEE")
+  // Rol personalizado opcional — si está presente, REEMPLAZA los permisos del rol base.
+  customRoleId String?
+  customRole   Role?    @relation(fields: [customRoleId], references: [id])
+  // Overrides individuales sobre el conjunto resuelto (JSON string[] de claves de permiso).
+  permsGrant   String   @default("[]")
+  permsRevoke  String   @default("[]")
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  @@index([customRoleId])
+}
+
+// Roles personalizados (solo modo standalone). Conjuntos nombrados de permisos.
+model Role {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  // Claves de permiso concedidas por el rol (JSON string[]).
+  permissions String   @default("[]")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
 }

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { Prisma } from "@/generated/prisma";
 import { Badge } from "@/components/ui/badge";
-import { isAdminRole } from "@/lib/permissions";
+import { canViewAudit } from "@/lib/permissions";
 import { purgeOldAudit } from "@/lib/audit";
 import { formatDate } from "@/lib/utils";
 import { AuditFilters } from "./audit-filters";
@@ -37,7 +37,7 @@ export default async function AuditoriaPage({
 }) {
   const session = await auth();
   if (!session) redirect("/login");
-  if (!isAdminRole(session.user)) redirect("/");
+  if (!canViewAudit(session.user)) redirect("/");
 
   // Mantener la tabla acotada a 6 meses en cada visita al panel.
   await purgeOldAudit().catch(() => 0);

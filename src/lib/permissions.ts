@@ -13,25 +13,15 @@ export const INV = {
   PRODUCTS_CREATE: "inventory:products:create",
   PRODUCTS_EDIT: "inventory:products:edit",
   PRODUCTS_DELETE: "inventory:products:delete",
+  PRODUCTS_HARD_DELETE: "inventory:products:hard_delete",
   CATEGORIES_MANAGE: "inventory:categories:manage",
   STOCK_COUNT: "inventory:stock:count",
   STOCK_ADJUST: "inventory:stock:adjust",
   DAILY_REOPEN: "inventory:daily:reopen",
   REPORTS_VIEW: "inventory:reports:view",
+  AUDIT_VIEW: "inventory:audit:view",
   USERS_MANAGE: "inventory:users:manage",
 } as const;
-
-/**
- * Permisos por defecto para un rol en modo standalone, donde no existe Nómina
- * Xpress que emita `inventoryPermissions` en el JWT. Reproduce el contrato:
- * roles administrativos obtienen los 10 permisos; el resto, el baseline operativo.
- */
-export function standalonePermissions(role: string): string[] {
-  if (role === "SUPERADMIN" || role === "ADMIN" || role === "PROPRIETARY") {
-    return Object.values(INV);
-  }
-  return [INV.VIEW, INV.STOCK_COUNT];
-}
 
 /** Verificación base: ¿el usuario tiene este permiso granular? */
 export function can(user: SessionUser | undefined | null, key: string): boolean {
@@ -67,13 +57,12 @@ export function canDeleteProducts(user: SessionUser): boolean {
 }
 
 /**
- * Borrado PERMANENTE de productos (no solo desactivar). Restringido a los roles
- * de mayor jerarquía: SUPERADMIN y PROPRIETARY. Requiere además el permiso de
- * eliminación. El borrado solo procede si el producto no tiene historial (se valida
- * en la API).
+ * Borrado PERMANENTE de productos (no solo desactivar). Gobernado por su propia
+ * clave de permiso. El borrado solo procede si el producto no tiene historial
+ * (se valida en la API).
  */
 export function canHardDeleteProducts(user: SessionUser): boolean {
-  return (user.role === "SUPERADMIN" || user.role === "PROPRIETARY") && canDeleteProducts(user);
+  return can(user, INV.PRODUCTS_HARD_DELETE);
 }
 
 /** Gestionar categorías. */
@@ -101,9 +90,14 @@ export function canViewReports(user: SessionUser): boolean {
   return can(user, INV.REPORTS_VIEW);
 }
 
-/** Gestionar usuarios del inventario (solo modo standalone). */
+/** Gestionar usuarios y roles del inventario (solo modo standalone). */
 export function canManageUsers(user: SessionUser): boolean {
   return can(user, INV.USERS_MANAGE);
+}
+
+/** Ver el módulo de auditoría. */
+export function canViewAudit(user: SessionUser): boolean {
+  return can(user, INV.AUDIT_VIEW);
 }
 
 // ─── Permisos por categoría de inventario diario ─────────────────────────────

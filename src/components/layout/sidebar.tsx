@@ -10,6 +10,7 @@ import {
   BarChart3,
   Tags,
   Users,
+  ShieldCheck,
   ChevronLeft,
   ClipboardList,
   ScrollText,
@@ -25,40 +26,39 @@ interface SidebarProps {
   canManageCategories?: boolean;
   canManageUsers?: boolean;
   canViewAudit?: boolean;
+  canViewReports?: boolean;
+  canDoStockCount?: boolean;
+  canView?: boolean;
   mobileOpen?: boolean;
   onClose?: () => void;
 }
 
-const baseNavItems = [
-  { href: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/productos", icon: Package, label: "Productos" },
-  { href: "/movimientos", icon: ArrowLeftRight, label: "Movimientos" },
-  { href: "/inventario-diario", icon: ClipboardList, label: "Inventario Diario" },
-  { href: "/alertas", icon: Bell, label: "Alertas" },
-  { href: "/reportes", icon: BarChart3, label: "Reportes" },
-];
+// `show` decide la visibilidad según los permisos efectivos del usuario.
+type NavItem = { href: string; icon: typeof LayoutDashboard; label: string; show: boolean };
 
-const adminOnlyItems = [
-  { href: "/admin/categorias", icon: Tags, label: "Categorías" },
-];
-
-const auditItems = [
-  { href: "/auditoria", icon: ScrollText, label: "Auditoría" },
-];
-
-const standaloneOnlyItems = [
-  { href: "/admin/usuarios", icon: Users, label: "Usuarios" },
-];
-
-export function Sidebar({ alertCount, isStandalone, nominaUrl, canManageCategories, canManageUsers, canViewAudit, mobileOpen, onClose }: SidebarProps) {
+export function Sidebar({
+  alertCount, isStandalone, nominaUrl,
+  canManageCategories, canManageUsers, canViewAudit,
+  canViewReports, canDoStockCount, canView,
+  mobileOpen, onClose,
+}: SidebarProps) {
   const pathname = usePathname();
 
-  const navItems = [
-    ...baseNavItems,
-    ...(canManageCategories ? adminOnlyItems : []),
-    ...(canViewAudit ? auditItems : []),
-    ...(isStandalone && canManageUsers ? standaloneOnlyItems : []),
+  // El dashboard y "ver" dependen del permiso base de inventario; el resto de su clave.
+  const allItems: NavItem[] = [
+    { href: "/",                 icon: LayoutDashboard, label: "Dashboard",         show: canView !== false },
+    { href: "/productos",        icon: Package,         label: "Productos",         show: canView !== false },
+    { href: "/movimientos",      icon: ArrowLeftRight,  label: "Movimientos",       show: !!canDoStockCount },
+    { href: "/inventario-diario",icon: ClipboardList,   label: "Inventario Diario", show: !!canDoStockCount },
+    { href: "/alertas",          icon: Bell,            label: "Alertas",           show: canView !== false },
+    { href: "/reportes",         icon: BarChart3,       label: "Reportes",          show: !!canViewReports },
+    { href: "/admin/categorias", icon: Tags,            label: "Categorías",        show: !!canManageCategories },
+    { href: "/auditoria",        icon: ScrollText,      label: "Auditoría",         show: !!canViewAudit },
+    { href: "/admin/roles",      icon: ShieldCheck,     label: "Roles",             show: isStandalone && !!canManageUsers },
+    { href: "/admin/usuarios",   icon: Users,           label: "Usuarios",          show: isStandalone && !!canManageUsers },
   ];
+
+  const navItems = allItems.filter((i) => i.show);
 
   return (
     <aside
