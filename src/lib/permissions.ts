@@ -124,25 +124,25 @@ export function dailyCategoryKeys(slug: string): string[] {
  * ¿Puede el usuario realizar `action` sobre el inventario diario de la categoría `slug`?
  *
  * Orden de evaluación:
- *  1. Clave granular emitida por Nómina (fuente real en modo integrado).
- *  2. Modo standalone: PROPRIETARY/SUPERADMIN/ADMIN tienen acceso total por rol
- *     (sin necesidad de re-login cuando se crean nuevas categorías).
- *  3. Fallback transicional: la clave global vieja (`inventory:stock:count`)
- *     concede operación mientras Nómina aún no emite las claves por categoría.
+ *  1. Clave granular por categoría (fuente real cuando Nómina ya la emite).
+ *  2. Fallback a la clave GLOBAL equivalente de esa acción (`can()`, que ya
+ *     refleja overrides individuales y roles personalizados resueltos en
+ *     `inventoryPermissions`). "edit" = reabrir, exige DAILY_REOPEN explícito
+ *     — un usuario con solo STOCK_COUNT (p.ej. EMPLOYEE) no puede reabrir.
+ *     "history" no tiene clave global equivalente hoy: solo se concede por
+ *     clave granular por categoría.
  */
 export function canDailyCategory(user: SessionUser | null | undefined, slug: string, action: DailyAction): boolean {
   if (!user) return false;
   if (can(user, dailyCategoryKey(slug, action))) return true;
 
-  const isStandalone = process.env.AUTH_MODE === "standalone";
-  if (isStandalone && ADMIN_ROLES.includes(user.role)) return true;
-
-  // Compatibilidad con sesiones/JWT previos a la separación por categoría.
-  const perms = user.inventoryPermissions ?? [];
-  if (perms.includes(INV.STOCK_COUNT)) return action !== "history";
-  if (perms.length === 0 && user.inventoryAccess) return action === "view" || action === "open" || action === "close";
-
-  return false;
+  switch (action) {
+    case "view":  return can(user, INV.VIEW);
+    case "open":  return can(user, INV.STOCK_COUNT);
+    case "close": return can(user, INV.STOCK_COUNT);
+    case "edit":  return can(user, INV.DAILY_REOPEN);
+    case "history": return false;
+  }
 }
 
 export const canViewDailyCategory  = (u: SessionUser, slug: string) => canDailyCategory(u, slug, "view");

@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { canEditProducts, canDeleteProducts, canHardDeleteProducts } from "@/lib/permissions";
+import { canEditProducts, canDeleteProducts, canHardDeleteProducts, canAccessInventory } from "@/lib/permissions";
 import { isBottleLevel } from "@/lib/bottle";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!canAccessInventory(session.user)) {
+    return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
+  }
 
   const { id } = await params;
   const product = await prisma.product.findUnique({
@@ -21,9 +24,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-  if (!canEditProducts(session.user)) {
-    return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
-  }
 
   const { id } = await params;
   const body = await req.json() as {
@@ -35,6 +35,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     active?: boolean;
     alertBottleLevel?: string | null;
   };
+
+  // Reactivar/desactivar es la contraparte de "eliminar" (soft-delete), no una
+  // edición del producto: se gobierna por PRODUCTS_DELETE. Cualquier otro campo
+  // en el mismo PATCH exige el permiso de edición completo.
+  const bodyKeys = Object.keys(body);
+  const isActivationOnly = bodyKeys.length === 1 && bodyKeys[0] === "active";
+
+  const allowed = isActivationOnly ? canDeleteProducts(session.user) : canEditProducts(session.user);
+  if (!allowed) {
+    return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
+  }
 
   const product = await prisma.product.update({
     where: { id },

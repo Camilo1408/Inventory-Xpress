@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { canManageCategories, dailyCategoryKeys } from "@/lib/permissions";
+import { canManageCategories, canAccessInventory, dailyCategoryKeys } from "@/lib/permissions";
 import { uniqueSlug } from "@/lib/slug";
 import { notifyNominaCategoryCreated } from "@/lib/permission-registry";
 import { audit } from "@/lib/audit";
@@ -9,6 +9,9 @@ import { audit } from "@/lib/audit";
 export async function GET() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!canAccessInventory(session.user)) {
+    return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
+  }
 
   // Devuelve solo categorías raíz activas con sus subcategorías activas
   const categories = await prisma.category.findMany({

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { canViewReports } from "@/lib/permissions";
 
 type Period = "week" | "fortnight" | "month" | "all";
 
@@ -32,6 +33,9 @@ function getPeriodDateFrom(period: Period): Date | null {
 export async function GET(req: Request) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!canViewReports(session.user)) {
+    return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
+  }
 
   const { searchParams } = new URL(req.url);
   const period = (searchParams.get("period") ?? "month") as Period;

@@ -16,6 +16,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (!canManageUsers(session.user)) return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
 
   const { id } = await params;
+  const existing = await prisma.role.findUnique({ where: { id }, select: { id: true } });
+  if (!existing) return NextResponse.json({ error: "Rol no encontrado" }, { status: 404 });
+
   const body = await req.json() as {
     name?: string;
     description?: string;
@@ -44,6 +47,8 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (!canManageUsers(session.user)) return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
 
   const { id } = await params;
+  const existing = await prisma.role.findUnique({ where: { id }, select: { id: true } });
+  if (!existing) return NextResponse.json({ error: "Rol no encontrado" }, { status: 404 });
 
   // Si tiene usuarios asignados, no se puede borrar: primero hay que reasignarlos.
   const userCount = await prisma.user.count({ where: { customRoleId: id } });
