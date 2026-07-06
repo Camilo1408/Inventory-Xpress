@@ -4,8 +4,9 @@ import { prisma } from "./db";
 import bcrypt from "bcryptjs";
 import { authConfig } from "./auth.config";
 import { resolveUserPermissions } from "./roles";
+import { config } from "./config";
 
-const isStandalone = process.env.AUTH_MODE === "standalone";
+const isStandalone = config.authMode === "standalone";
 
 export const { auth, handlers, signIn, signOut } = NextAuth({
   ...authConfig,

@@ -1,10 +1,11 @@
 import NextAuth from "next-auth";
 import { authConfig } from "@/lib/auth.config";
 import { canAccessInventory } from "@/lib/permissions";
+import { config as appConfig } from "@/lib/config";
 
 const { auth } = NextAuth(authConfig);
 
-const isStandalone = process.env.AUTH_MODE === "standalone";
+const isStandalone = appConfig.authMode === "standalone";
 
 export default auth((req) => {
   const session = req.auth;

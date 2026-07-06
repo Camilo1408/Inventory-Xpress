@@ -4,9 +4,10 @@ import { prisma } from "@/lib/db";
 import { canManageUsers } from "@/lib/permissions";
 import { isBaseRole, sanitizePermissionKeys } from "@/lib/roles";
 import bcrypt from "bcryptjs";
+import { config } from "@/lib/config";
 
 function isStandalone() {
-  return process.env.AUTH_MODE === "standalone";
+  return config.features.userManagement;
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {

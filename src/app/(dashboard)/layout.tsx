@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { canManageCategories, canManageUsers, canViewAudit, canViewReports, canDoStockCount, can, INV } from "@/lib/permissions";
+import { config } from "@/lib/config";
 
 export default async function DashboardLayout({
   children,
@@ -18,7 +19,7 @@ export default async function DashboardLayout({
   }).catch(() => []);
   const alertCount = alertProducts.filter(p => p.currentStock <= p.minStock).length;
 
-  const isStandalone = process.env.AUTH_MODE === "standalone";
+  const isStandalone = config.authMode === "standalone";
   const nominaUrl = process.env.NEXT_PUBLIC_NOMINA_APP_URL;
 
   return (

@@ -4,9 +4,10 @@ import { prisma } from "@/lib/db";
 import { canManageUsers } from "@/lib/permissions";
 import { sanitizePermissionKeys } from "@/lib/roles";
 import { uniqueSlug } from "@/lib/slug";
+import { config } from "@/lib/config";
 
 function isStandalone() {
-  return process.env.AUTH_MODE === "standalone";
+  return config.features.userManagement;
 }
 
 export async function GET() {

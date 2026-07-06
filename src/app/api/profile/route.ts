@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import bcrypt from "bcryptjs";
+import { config } from "@/lib/config";
 
 function isStandalone() {
-  return process.env.AUTH_MODE === "standalone";
+  return config.features.userManagement;
 }
 
 /** PATCH /api/profile — el usuario en sesión edita su propio usuario/contraseña. */

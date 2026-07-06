@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { canManageUsers } from "@/lib/permissions";
+import { config } from "@/lib/config";
 import {
   PERMISSION_CATALOG,
   BASE_ROLES,
@@ -15,7 +16,7 @@ import { RolesClient } from "./roles-client";
 export default async function RolesPage() {
   const session = await auth();
   if (!session) redirect("/login");
-  if (process.env.AUTH_MODE !== "standalone") redirect("/");
+  if (!config.features.userManagement) redirect("/");
   if (!canManageUsers(session.user)) redirect("/");
 
   const roles = await prisma.role.findMany({

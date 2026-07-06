@@ -1,12 +1,13 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { PerfilClient } from "./perfil-client";
+import { config } from "@/lib/config";
 
 export default async function PerfilPage() {
   const session = await auth();
   if (!session) redirect("/login");
   // En modo integrado el perfil se gestiona en Nómina Xpress.
-  if (process.env.AUTH_MODE !== "standalone") redirect("/");
+  if (!config.features.userManagement) redirect("/");
 
   return (
     <div className="max-w-lg mx-auto">

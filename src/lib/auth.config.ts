@@ -1,11 +1,12 @@
 import type { NextAuthConfig } from "next-auth";
+import { config } from "./config";
 
 // Config edge-safe: solo callbacks JWT, sin providers que usen DB
 export const authConfig: NextAuthConfig = {
   secret: process.env.NEXTAUTH_SECRET,
   session: { strategy: "jwt" },
   providers: [],
-  pages: process.env.AUTH_MODE === "standalone" ? { signIn: "/login" } : undefined,
+  pages: config.authMode === "standalone" ? { signIn: "/login" } : undefined,
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
