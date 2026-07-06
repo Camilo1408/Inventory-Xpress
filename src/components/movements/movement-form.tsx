@@ -56,6 +56,10 @@ function ProductCombobox({
       )
     : products;
 
+  // Resetea el resaltado al cambiar la búsqueda. El setState-en-effect es
+  // intencional: centraliza el reset en un punto en vez de repetirlo en los
+  // cinco sitios que modifican `search`.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setHighlighted(0); }, [search]);
 
   useEffect(() => {
@@ -189,10 +193,13 @@ export function MovementForm({ products, canAdjust }: { products: Product[]; can
   const selectedProduct = products.find((p) => p.id === productId);
   const isBottle = isBottleTrackedSlug(selectedProduct?.category?.slug ?? null);
 
-  // Sincronizar estado de botella al cambiar producto
+  // Sincronizar estado de botella al cambiar producto. El setState-en-effect es
+  // intencional: reinicia los campos del formulario cuando cambia el producto
+  // seleccionado (efecto de sincronización con una prop externa).
   useEffect(() => {
     if (!selectedProduct) return;
     const lvl = isBottleLevel(selectedProduct.bottleLevel) ? selectedProduct.bottleLevel as BottleLevel : null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setBottleLevel(lvl);
     setReserveBottles(selectedProduct.reserveBottles ?? 0);
     setQuantity("");

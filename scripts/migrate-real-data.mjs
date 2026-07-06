@@ -43,7 +43,6 @@ async function main() {
   const auditLogs = await fetchAll("AuditLog");
 
   // Orden topológico de categorías: raíces primero, luego hijas (asume 2 niveles).
-  const byId = new Map(categoriesRaw.map((c) => [c.id, c]));
   const inserted = new Set();
   const orderedCategories = [];
   function canInsert(c) {

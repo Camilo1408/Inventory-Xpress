@@ -50,6 +50,10 @@ export function ReportesClient({ categories }: { categories: Category[] }) {
     }
   }, [period]);
 
+  // Carga el reporte al montar y cuando cambia el periodo. El setState-en-effect
+  // (setLoading/setRows dentro de fetchReport) es el patrón estándar de fetch de
+  // datos y es intencional.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void fetchReport(); }, [fetchReport]);
 
   // Subcategorías disponibles según la categoría seleccionada (derivadas de las
