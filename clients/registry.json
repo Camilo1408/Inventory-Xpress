@@ -1,0 +1,22 @@
+{
+  "clients": [
+    {
+      "slug": "cucina-dei-fiori",
+      "displayName": "Cucina dei Fiori",
+      "domain": "inventario.cucinadeifiori.com",
+      "vercelProject": "inventory-cucina-dei-fiori",
+      "tursoDatabase": "inventory-fiori",
+      "features": ["cocktails", "dailyInventory"],
+      "active": true
+    },
+    {
+      "slug": "demo",
+      "displayName": "Demo",
+      "domain": "inventory-xpress-demo.vercel.app",
+      "vercelProject": "inventory-xpress-demo",
+      "tursoDatabase": "inventory-xpress-demo-camilo1408",
+      "features": ["cocktails", "dailyInventory"],
+      "active": true
+    }
+  ]
+}
