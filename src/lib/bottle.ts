@@ -2,6 +2,8 @@
 // Control de licores por nivel de botella (subcategoría Cócteles).
 // Lógica pura: sin dependencias de React/Prisma para poder testearse aislada.
 
+import { config } from "./config";
+
 export type BottleLevel =
   | "full"
   | "three_quarters"
@@ -52,8 +54,11 @@ export function bottleLevelOrder(level: BottleLevel): number {
   return bottleLevelMeta(level).order;
 }
 
-/** ¿La subcategoría con este slug se controla por nivel de botella? */
+/** ¿La subcategoría con este slug se controla por nivel de botella?
+ *  Si el feature flag de cócteles está apagado para esta instancia, siempre false
+ *  (oculta toda la UI y omite la lógica de botella en un solo punto). */
 export function isBottleTrackedSlug(slug: string | null | undefined): boolean {
+  if (!config.features.cocktails) return false;
   return !!slug && BOTTLE_TRACKING_SLUGS.includes(slug);
 }
 
