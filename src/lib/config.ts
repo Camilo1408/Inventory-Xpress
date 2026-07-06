@@ -13,6 +13,9 @@ export const config = {
   },
   features: {
     // Standalone habilita gestión de usuarios/roles/perfil (ya existía como AUTH_MODE).
+    // NOTA: acoplamiento INTENCIONAL a authMode — la gestión de usuarios solo existe
+    // en modo standalone. No convertir esto en una env var independiente sin antes
+    // desacoplar los guardas que lo consumen (isStandalone() en las rutas admin/*).
     userManagement: authMode === "standalone",
     // OFF por defecto: control de licores por nivel de botella.
     cocktails: process.env.NEXT_PUBLIC_FEATURE_COCKTAILS === "true",
