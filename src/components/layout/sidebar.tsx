@@ -29,6 +29,7 @@ interface SidebarProps {
   canViewReports?: boolean;
   canDoStockCount?: boolean;
   canView?: boolean;
+  featureDailyInventory?: boolean;
   mobileOpen?: boolean;
   onClose?: () => void;
 }
@@ -40,6 +41,7 @@ export function Sidebar({
   alertCount, isStandalone, nominaUrl,
   canManageCategories, canManageUsers, canViewAudit,
   canViewReports, canDoStockCount, canView,
+  featureDailyInventory,
   mobileOpen, onClose,
 }: SidebarProps) {
   const pathname = usePathname();
@@ -49,7 +51,7 @@ export function Sidebar({
     { href: "/",                 icon: LayoutDashboard, label: "Dashboard",         show: canView !== false },
     { href: "/productos",        icon: Package,         label: "Productos",         show: canView !== false },
     { href: "/movimientos",      icon: ArrowLeftRight,  label: "Movimientos",       show: !!canDoStockCount },
-    { href: "/inventario-diario",icon: ClipboardList,   label: "Inventario Diario", show: !!canDoStockCount },
+    { href: "/inventario-diario",icon: ClipboardList,   label: "Inventario Diario", show: !!canDoStockCount && !!featureDailyInventory },
     { href: "/alertas",          icon: Bell,            label: "Alertas",           show: canView !== false },
     { href: "/reportes",         icon: BarChart3,       label: "Reportes",          show: !!canViewReports },
     { href: "/admin/categorias", icon: Tags,            label: "Categorías",        show: !!canManageCategories },

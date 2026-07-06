@@ -4,6 +4,7 @@ import { canViewDailyCategory, canOpenDailyCategory } from "@/lib/permissions";
 import { isBottleTrackedSlug, isBottleLevel } from "@/lib/bottle";
 import { audit } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
+import { config } from "@/lib/config";
 
 interface CreateItem {
   productId: string;
@@ -46,6 +47,9 @@ async function loadRootCategory(categoryId: string) {
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!config.features.dailyInventory) {
+    return NextResponse.json({ error: "Función no disponible" }, { status: 403 });
+  }
 
   const { searchParams } = new URL(req.url);
   const date = searchParams.get("date") ?? new Date().toISOString().slice(0, 10);
@@ -101,6 +105,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!config.features.dailyInventory) {
+    return NextResponse.json({ error: "Función no disponible" }, { status: 403 });
+  }
 
   const body = await req.json() as CreateBody;
 

@@ -6,6 +6,7 @@ import { ClipboardList, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { canViewDailyCategory, canDailyCategory } from "@/lib/permissions";
 import { DailyInventoryClient } from "./daily-inventory-client";
+import { config } from "@/lib/config";
 
 const STATUS_BADGE: Record<string, string> = {
   none:   "bg-slate-100 text-slate-500 border-0",
@@ -25,6 +26,7 @@ export default async function InventarioDiarioPage({
 }) {
   const session = await auth();
   if (!session) redirect("/login");
+  if (!config.features.dailyInventory) redirect("/");
 
   const resolved = await searchParams;
   const today = new Date().toISOString().slice(0, 10);

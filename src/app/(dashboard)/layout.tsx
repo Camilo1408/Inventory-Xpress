@@ -33,6 +33,7 @@ export default async function DashboardLayout({
       canViewReports={canViewReports(session.user)}
       canDoStockCount={canDoStockCount(session.user)}
       canView={can(session.user, INV.VIEW)}
+      featureDailyInventory={config.features.dailyInventory}
       userName={session.user.name ?? session.user.username}
       role={session.user.role}
     >

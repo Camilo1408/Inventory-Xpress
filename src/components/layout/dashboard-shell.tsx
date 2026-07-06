@@ -14,6 +14,7 @@ interface DashboardShellProps {
   canViewReports: boolean;
   canDoStockCount: boolean;
   canView: boolean;
+  featureDailyInventory: boolean;
   userName: string;
   role: string;
   children: React.ReactNode;
@@ -29,6 +30,7 @@ export function DashboardShell({
   canViewReports,
   canDoStockCount,
   canView,
+  featureDailyInventory,
   userName,
   role,
   children,
@@ -56,6 +58,7 @@ export function DashboardShell({
         canViewReports={canViewReports}
         canDoStockCount={canDoStockCount}
         canView={canView}
+        featureDailyInventory={featureDailyInventory}
         mobileOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}
       />

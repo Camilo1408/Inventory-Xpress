@@ -4,6 +4,7 @@ import { canDailyCategory, canDoStockCount, canReopenDailyInventory, type DailyA
 import { isBottleTrackedSlug, isBottleLevel, bottleStock } from "@/lib/bottle";
 import { audit } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
+import { config } from "@/lib/config";
 
 interface FinalCountItem {
   productId: string;
@@ -32,6 +33,9 @@ export async function PATCH(
 ) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!config.features.dailyInventory) {
+    return NextResponse.json({ error: "Función no disponible" }, { status: 403 });
+  }
 
   const { id } = await params;
   const body = await req.json() as PatchBody;
