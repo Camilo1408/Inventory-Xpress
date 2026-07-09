@@ -39,6 +39,11 @@ yarn-error.log*
 *.db-shm
 *.db-wal
 
+# Backups de BD generados localmente (los reales viven como artifacts de Actions)
+/backups/
+*.sql.gpg
+.provision.sql
+
 # Prisma generated client (se regenera con prisma generate)
 src/generated/
 

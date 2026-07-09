@@ -1,0 +1,116 @@
+name: Weekly DB Backup (per-cliente) — Inventory Xpress
+
+on:
+  schedule:
+    # Cada domingo a las 03:00 UTC
+    - cron: "0 3 * * 0"
+  workflow_dispatch: # permite ejecución manual desde GitHub
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: Dump, probar y cifrar todas las BD de clientes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Preflight — cobertura de clientes (registro ↔ DB_TARGETS)
+        env:
+          DB_TARGETS: ${{ secrets.DB_TARGETS }}
+        run: node scripts/backup-preflight.mjs
+
+      - name: Dump + prueba de integridad + cifrado por cliente
+        env:
+          DB_TARGETS: ${{ secrets.DB_TARGETS }}
+          PASSPHRASE: ${{ secrets.BACKUP_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DB_TARGETS:-}" ]; then
+            echo "::error::Falta el secret DB_TARGETS (JSON array de {name,url,token})."
+            exit 1
+          fi
+          if [ -z "${PASSPHRASE:-}" ]; then
+            echo "::error::Falta el secret BACKUP_GPG_PASSPHRASE."
+            exit 1
+          fi
+          mkdir -p backups
+          DATE=$(date -u '+%Y-%m-%d')
+          COUNT=$(echo "$DB_TARGETS" | jq 'length')
+          echo "Clientes a respaldar: $COUNT"
+          for i in $(seq 0 $((COUNT - 1))); do
+            NAME=$(echo "$DB_TARGETS" | jq -r ".[$i].name")
+            URL=$(echo "$DB_TARGETS" | jq -r ".[$i].url")
+            TOKEN=$(echo "$DB_TARGETS" | jq -r ".[$i].token")
+            echo "::add-mask::$TOKEN"
+            echo "== Respaldando ${NAME} =="
+            SQL="backups/backup-${NAME}-${DATE}.sql"
+            # 1. Dump (solo lectura)
+            DUMP_URL="$URL" DUMP_TOKEN="$TOKEN" node scripts/db-dump.mjs "$SQL"
+            # 2. Prueba de integridad (restaura local y compara conteos)
+            node scripts/db-verify.mjs "$SQL"
+            # 3. Cifra y borra el .sql en claro
+            gpg --batch --yes --passphrase "$PASSPHRASE" \
+                --symmetric --cipher-algo AES256 \
+                --output "${SQL}.gpg" "$SQL"
+            rm "$SQL"
+          done
+          echo "Backups cifrados y probados:"
+          ls -la backups/
+
+      - name: Subir artefacto cifrado (retención 180 días = ~6 meses)
+        uses: actions/upload-artifact@v4
+        with:
+          name: turso-backups-${{ github.run_id }}
+          path: backups/*.gpg
+          retention-days: 180
+          if-no-files-found: error
+
+  notify-failure:
+    name: Alerta si el backup o su prueba falla
+    needs: backup
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Abrir issue de alerta
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const title = `⚠️ Backup de BD FALLÓ (run ${context.runId})`;
+            const body = [
+              'El workflow **Weekly DB Backup (per-cliente) — Inventory Xpress**',
+              'falló. Las bases de clientes pueden haber quedado sin respaldo, o un',
+              'backup no pasó la prueba de integridad.',
+              '',
+              `- Run: ${runUrl}`,
+              `- Fecha (UTC): ${new Date().toISOString()}`,
+              `- Disparo: ${context.eventName}`,
+              '',
+              'Qué revisar:',
+              '- `DB_TARGETS` (tokens válidos y no rotados/revocados; cubre a todos los clientes active del registro).',
+              '- `BACKUP_GPG_PASSPHRASE` presente.',
+              '- Prueba de integridad: conteos por tabla del dump vs. restauración local.',
+              '- Logs del run para ver qué cliente/paso falló (dump, verify o cifrado).',
+            ].join('\n');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+            });
