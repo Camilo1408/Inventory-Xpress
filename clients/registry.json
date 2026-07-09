@@ -7,7 +7,7 @@
       "vercelProject": "inventory-cucina-dei-fiori",
       "tursoDatabase": "inventory-fiori",
       "features": ["cocktails", "dailyInventory"],
-      "active": true
+      "active": false
     },
     {
       "slug": "demo",
