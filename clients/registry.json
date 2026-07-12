@@ -4,7 +4,7 @@
       "slug": "cucina-dei-fiori",
       "displayName": "Cucina dei Fiori",
       "domain": "inventario.cucinadeifiori.com",
-      "vercelProject": "inventory-cucina-dei-fiori",
+      "vercelProject": "inventory-xpress-fiori",
       "tursoDatabase": "inventory-xpress-fiori-camilo1408",
       "features": ["cocktails", "dailyInventory"],
       "active": true
