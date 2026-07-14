@@ -33,6 +33,8 @@ import {
   ChevronLeft,
   CalendarDays,
   Ban,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -102,6 +104,7 @@ interface Props {
   canOpen: boolean;
   canClose: boolean;
   canReopen: boolean;
+  canManageOpen: boolean;
   history: HistoryEntry[];
 }
 
@@ -778,14 +781,82 @@ function CloseConfirmDialog({
 function OpenView({
   inventory,
   movements,
+  category,
   canClose,
+  canManageOpen,
 }: {
   inventory: DailyInventory;
   movements: Movement[];
   category: InventoryCategory;
   canClose: boolean;
+  canManageOpen: boolean;
 }) {
   const router = useRouter();
+
+  // ── Descartar jornada abierta (PROPRIETARY/SUPERADMIN) ────────────────────
+  const [discardDialog, setDiscardDialog] = useState(false);
+  const [discardReason, setDiscardReason] = useState("");
+  const [discarding, setDiscarding] = useState(false);
+
+  async function handleDiscard() {
+    if (!discardReason.trim()) {
+      toast.error("Debes ingresar una justificación");
+      return;
+    }
+    setDiscarding(true);
+    const res = await fetch(`/api/daily-inventory/${inventory.id}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: discardReason.trim() }),
+    });
+    setDiscarding(false);
+    if (res.ok) {
+      toast.success("Jornada descartada");
+      setDiscardDialog(false);
+      router.push(`/inventario-diario?categoria=${category.slug}`);
+      router.refresh();
+    } else {
+      const data = (await res.json()) as { error?: string };
+      toast.error(data.error ?? "Error al descartar la jornada");
+    }
+  }
+
+  // ── Editar conteo inicial de una jornada abierta (PROPRIETARY/SUPERADMIN) ─
+  const [editInitialDialog, setEditInitialDialog] = useState(false);
+  const [editInitialCounts, setEditInitialCounts] = useState<Record<string, string>>({});
+  const [savingInitial, setSavingInitial] = useState(false);
+
+  function openEditInitial() {
+    setEditInitialCounts(
+      Object.fromEntries(
+        inventory.items
+          .filter((i) => !productIsBottle(i.product))
+          .map((i) => [i.productId, String(i.initialCount)])
+      )
+    );
+    setEditInitialDialog(true);
+  }
+
+  async function handleSaveInitial() {
+    const initialCounts = Object.entries(editInitialCounts)
+      .map(([productId, v]) => ({ productId, initialCount: parseField(v) ?? 0 }))
+      .filter((ic) => ic.initialCount >= 0);
+    setSavingInitial(true);
+    const res = await fetch(`/api/daily-inventory/${inventory.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "editInitial", initialCounts }),
+    });
+    setSavingInitial(false);
+    if (res.ok) {
+      toast.success("Conteo inicial corregido");
+      setEditInitialDialog(false);
+      router.refresh();
+    } else {
+      const data = (await res.json()) as { error?: string };
+      toast.error(data.error ?? "Error al corregir el conteo inicial");
+    }
+  }
 
   // Pre-llenar con valores existentes (cuando se reabre el inventario)
   const [finalCounts, setFinalCounts] = useState<Record<string, string>>(() =>
@@ -995,6 +1066,25 @@ function OpenView({
               Diligencia los campos por producto. Si dejas vacíos los campos de entrada/salida no registrada, el sistema los calculará automáticamente a partir del conteo real.
             </p>
           </div>
+        </div>
+      )}
+
+      {canManageOpen && (
+        <div className="flex flex-wrap items-center gap-2 justify-end">
+          <Button type="button" size="sm" variant="outline" onClick={openEditInitial}>
+            <Pencil className="w-3.5 h-3.5 mr-1.5" />
+            Editar conteo inicial
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => { setDiscardReason(""); setDiscardDialog(true); }}
+            className="border-red-200 text-red-600 hover:bg-red-50"
+          >
+            <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+            Descartar jornada
+          </Button>
         </div>
       )}
 
@@ -1287,6 +1377,89 @@ function OpenView({
         }}
         loading={loading}
       />
+
+      {/* Descartar jornada abierta */}
+      <Dialog open={discardDialog} onOpenChange={(v) => { if (!discarding) setDiscardDialog(v); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-700">
+              <Trash2 className="w-4 h-4" />
+              Descartar jornada
+            </DialogTitle>
+            <DialogDescription>
+              Se eliminará el registro de esta jornada abierta y se revertirá cualquier ajuste de
+              stock hecho al abrirla. Esta acción no se puede deshacer. Quedará registrada en auditoría.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="discard-reason" className="text-sm font-medium text-slate-700">
+              Justificación <span className="text-red-500">*</span>
+            </Label>
+            <Textarea
+              id="discard-reason"
+              placeholder="Ej: Se abrió la categoría equivocada, se debe reiniciar el conteo..."
+              value={discardReason}
+              onChange={(e) => setDiscardReason(e.target.value)}
+              rows={3}
+              className="resize-none"
+              disabled={discarding}
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDiscardDialog(false)} disabled={discarding}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleDiscard}
+              disabled={discarding || !discardReason.trim()}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {discarding ? "Descartando..." : "Descartar jornada"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Editar conteo inicial */}
+      <Dialog open={editInitialDialog} onOpenChange={(v) => { if (!savingInitial) setEditInitialDialog(v); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-4 h-4" />
+              Editar conteo inicial
+            </DialogTitle>
+            <DialogDescription>
+              Corrige el conteo inicial registrado al abrir la jornada. El stock del sistema se
+              reconcilia automáticamente con el nuevo valor, preservando los movimientos ya ocurridos hoy.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[50vh] overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-md">
+            {numericItems.map((i) => (
+              <div key={i.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                <span className="text-sm font-medium text-slate-800">{i.product.name}</span>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  className="w-28 text-right tabular-nums"
+                  value={editInitialCounts[i.productId] ?? ""}
+                  onChange={(e) =>
+                    setEditInitialCounts((prev) => ({ ...prev, [i.productId]: sanitizeNumericInput(e.target.value) }))
+                  }
+                  disabled={savingInitial}
+                />
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setEditInitialDialog(false)} disabled={savingInitial}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveInitial} disabled={savingInitial} className="bg-blue-600 hover:bg-blue-700">
+              {savingInitial ? "Guardando..." : "Guardar corrección"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1537,6 +1710,7 @@ export function DailyInventoryClient({
   canOpen,
   canClose,
   canReopen,
+  canManageOpen,
   history,
 }: Props) {
   const router = useRouter();
@@ -1601,7 +1775,7 @@ export function DailyInventoryClient({
           </div>
         )
       ) : existing.status === "open" ? (
-        <OpenView inventory={existing} movements={movements} category={category} canClose={canClose} />
+        <OpenView inventory={existing} movements={movements} category={category} canClose={canClose} canManageOpen={canManageOpen} />
       ) : (
         <ClosedView inventory={existing} movements={movements} canReopen={canReopen} />
       )}

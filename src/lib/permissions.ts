@@ -155,3 +155,13 @@ export const canViewDailyHistory   = (u: SessionUser, slug: string) => canDailyC
 export function isAdminRole(user: SessionUser): boolean {
   return ADMIN_ROLES.includes(user.role);
 }
+
+// Solo estos roles pueden descartar una jornada abierta o corregir su conteo
+// inicial. A propósito NO incluye ADMIN (a diferencia de `ADMIN_ROLES`): es una
+// acción destructiva/correctiva reservada a dueño y superadmin.
+const MANAGE_OPEN_DAILY_ROLES = ["PROPRIETARY", "SUPERADMIN"];
+
+/** ¿Puede descartar/editar el inicio de un inventario diario ABIERTO? */
+export function canManageOpenDaily(user: SessionUser | null | undefined): boolean {
+  return !!user && MANAGE_OPEN_DAILY_ROLES.includes(user.role);
+}

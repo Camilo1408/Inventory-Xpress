@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { canDailyCategory, canDoStockCount, canReopenDailyInventory, type DailyAction } from "@/lib/permissions";
+import { canDailyCategory, canDoStockCount, canReopenDailyInventory, canManageOpenDaily, type DailyAction } from "@/lib/permissions";
 import { isBottleTrackedSlug, isBottleLevel, bottleStock } from "@/lib/bottle";
 import { audit } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
@@ -21,11 +21,14 @@ interface PatchBody {
   action?: string;
   reason?: string;
   finalCounts?: unknown;
+  initialCounts?: unknown;
 }
 
 /** PATCH /api/daily-inventory/[id]
- *  body { finalCounts: [...] }          → cerrar inventario (permiso :close de la categoría)
- *  body { action: "reopen" }            → reabrir inventario (permiso :edit de la categoría)
+ *  body { finalCounts: [...] }                        → cerrar inventario (permiso :close de la categoría)
+ *  body { action: "reopen" }                          → reabrir inventario (permiso :edit de la categoría)
+ *  body { action: "editInitial", initialCounts: [...] } → corregir conteo inicial de una jornada ABIERTA
+ *                                                         (solo PROPRIETARY/SUPERADMIN, ver canManageOpenDaily)
  */
 export async function PATCH(
   req: NextRequest,
@@ -62,6 +65,92 @@ export async function PATCH(
       : action === "edit"
       ? canReopenDailyInventory(session.user)
       : canDoStockCount(session.user);
+
+  // ── Acción: corregir conteo inicial (jornada ABIERTA) ───────────────────────
+  if (body.action === "editInitial") {
+    if (!canManageOpenDaily(session.user)) {
+      await audit({
+        action: "access.denied", entityType: "DailyInventory", entityId: id,
+        categoryId: meta.categoryId, categoryName, userId, userName,
+        summary: `Intento de editar conteo inicial${categoryName ? ` de ${categoryName}` : ""} sin permiso`, result: "denied",
+      });
+      return NextResponse.json({ error: "Sin permiso para editar el conteo inicial" }, { status: 403 });
+    }
+
+    const inventory = await prisma.dailyInventory.findUnique({
+      where: { id },
+      include: { items: { include: { product: { select: { id: true, category: { select: { slug: true } } } } } } },
+    });
+    if (!inventory) return NextResponse.json({ error: "Inventario no encontrado" }, { status: 404 });
+    if (inventory.status !== "open") {
+      return NextResponse.json({ error: "Solo se puede editar el conteo inicial de una jornada abierta" }, { status: 409 });
+    }
+
+    if (!Array.isArray(body.initialCounts) || body.initialCounts.length === 0) {
+      return NextResponse.json({ error: "initialCounts es requerido y debe tener al menos un elemento" }, { status: 400 });
+    }
+    const initialCounts = body.initialCounts as { productId: string; initialCount: number }[];
+
+    const invalid = initialCounts.some(
+      (ic) => typeof ic.productId !== "string" || typeof ic.initialCount !== "number" || ic.initialCount < 0
+    );
+    if (invalid) return NextResponse.json({ error: "Datos inválidos en initialCounts" }, { status: 400 });
+
+    // Los productos de botella no llevan conteo numérico inicial (no aplica aquí).
+    const numericItems = inventory.items.filter((i) => !isBottleTrackedSlug(i.product.category?.slug));
+    const byProduct = new Map(initialCounts.map((ic) => [ic.productId, ic.initialCount]));
+
+    // Movimientos "daily_open_adjust" existentes (creados al abrir, si el conteo
+    // inicial difería del stock del sistema en ese momento).
+    const itemIds = numericItems.map((i) => i.id);
+    const existingAdjust = await prisma.stockMovement.findMany({
+      where: { dailyInventoryItemId: { in: itemIds }, source: "daily_open_adjust" },
+      select: { id: true, dailyInventoryItemId: true, quantity: true },
+    });
+    const adjustByItem = new Map(existingAdjust.map((m) => [m.dailyInventoryItemId!, m]));
+
+    await prisma.$transaction(async (tx) => {
+      for (const item of numericItems) {
+        const newCount = byProduct.get(item.productId);
+        if (newCount === undefined || newCount === item.initialCount) continue;
+
+        // delta = diferencia respecto al conteo inicial PREVIO (no al stock actual),
+        // así se preserva cualquier movimiento manual (entrada/salida) que ya haya
+        // ocurrido hoy después de abrir la jornada.
+        const delta = newCount - item.initialCount;
+        const existing = adjustByItem.get(item.id);
+        const newAdjustQty = (existing?.quantity ?? 0) + delta;
+        const note = `Corrección de conteo inicial (jornada abierta) por ${userName} — inventario diario ${inventory.date}`;
+
+        await tx.dailyInventoryItem.update({ where: { id: item.id }, data: { initialCount: newCount } });
+
+        if (existing) {
+          await tx.stockMovement.update({ where: { id: existing.id }, data: { quantity: newAdjustQty, notes: note } });
+        } else if (newAdjustQty !== 0) {
+          await tx.stockMovement.create({
+            data: {
+              productId: item.productId, type: "ADJUSTMENT", quantity: newAdjustQty, notes: note,
+              userId, userName, dailyInventoryItemId: item.id, source: "daily_open_adjust",
+            },
+          });
+        }
+
+        await tx.product.update({ where: { id: item.productId }, data: { currentStock: { increment: delta } } });
+      }
+    });
+
+    await audit({
+      action: "daily.edit_initial", entityType: "DailyInventory", entityId: id,
+      categoryId: meta.categoryId, categoryName, userId, userName,
+      summary: `Corrección de conteo inicial${categoryName ? ` de ${categoryName}` : ""} (${inventory.date})`,
+    });
+
+    const updated = await prisma.dailyInventory.findUniqueOrThrow({
+      where: { id },
+      include: { items: { include: { product: { select: { id: true, name: true, unit: true, currentStock: true } } } } },
+    });
+    return NextResponse.json({ inventory: updated });
+  }
 
   // ── Acción: reabrir ───────────────────────────────────────────────────────
   if (body.action === "reopen") {
@@ -376,4 +465,85 @@ export async function PATCH(
   });
 
   return NextResponse.json({ inventory: { ...closed, items: itemsWithCalc } });
+}
+
+/** DELETE /api/daily-inventory/[id]
+ *  Descarta una jornada ABIERTA (solo PROPRIETARY/SUPERADMIN, ver canManageOpenDaily).
+ *  No aplica a jornadas cerradas: esas ya generaron movimientos de cierre y stock
+ *  consolidado; para corregirlas se usa "reopen".
+ *
+ *  Revierte cualquier ajuste de stock hecho al abrir ("daily_open_adjust") antes
+ *  de borrar, y borra el registro (los DailyInventoryItem caen en cascada).
+ */
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!config.features.dailyInventory) {
+    return NextResponse.json({ error: "Función no disponible" }, { status: 403 });
+  }
+  if (!canManageOpenDaily(session.user)) {
+    return NextResponse.json({ error: "Sin permiso para descartar esta jornada" }, { status: 403 });
+  }
+
+  const { id } = await params;
+  let reason = "";
+  try {
+    const body = await req.json() as { reason?: string };
+    reason = body.reason?.trim() ?? "";
+  } catch {
+    // body ausente/no-JSON: se trata como reason vacío, validado abajo
+  }
+  if (!reason) {
+    return NextResponse.json({ error: "Debes ingresar una justificación para descartar la jornada" }, { status: 400 });
+  }
+
+  const inventory = await prisma.dailyInventory.findUnique({
+    where: { id },
+    include: { items: { select: { id: true, productId: true } } },
+  });
+  if (!inventory) return NextResponse.json({ error: "Inventario no encontrado" }, { status: 404 });
+  if (inventory.status !== "open") {
+    return NextResponse.json({ error: "Solo se pueden descartar jornadas abiertas" }, { status: 409 });
+  }
+
+  let categoryName: string | null = null;
+  if (inventory.categoryId) {
+    const cat = await prisma.category.findUnique({ where: { id: inventory.categoryId }, select: { name: true } });
+    categoryName = cat?.name ?? null;
+  }
+
+  const userId   = session.user.id;
+  const userName = session.user.name ?? session.user.username;
+
+  const itemIds = inventory.items.map((i) => i.id);
+  const adjustments = await prisma.stockMovement.findMany({
+    where: { dailyInventoryItemId: { in: itemIds }, source: "daily_open_adjust" },
+    select: { productId: true, quantity: true },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    // Revertir el ajuste de stock hecho al abrir, si lo hubo.
+    for (const adj of adjustments) {
+      if (adj.quantity === 0) continue;
+      await tx.product.update({
+        where: { id: adj.productId },
+        data: { currentStock: { decrement: adj.quantity } },
+      });
+    }
+    // dailyInventoryItemId no tiene FK en cascada en StockMovement: limpiar
+    // explícitamente los movimientos de apertura antes de borrar la jornada.
+    await tx.stockMovement.deleteMany({ where: { dailyInventoryItemId: { in: itemIds }, source: "daily_open_adjust" } });
+    await tx.dailyInventory.delete({ where: { id } }); // items en cascada
+  });
+
+  await audit({
+    action: "daily.delete", entityType: "DailyInventory", entityId: id,
+    categoryId: inventory.categoryId, categoryName, userId, userName,
+    summary: `Jornada abierta descartada${categoryName ? ` de ${categoryName}` : ""} (${inventory.date}). Motivo: ${reason}`,
+  });
+
+  return NextResponse.json({ ok: true });
 }
