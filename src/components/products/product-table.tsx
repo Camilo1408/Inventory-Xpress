@@ -189,8 +189,106 @@ export function ProductTable({ products, rootCategories, canManage, canHardDelet
         <span className="text-sm text-slate-400">{filtered.length} productos</span>
       </div>
 
-      {/* Tabla */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto">
+      {/* Móvil: tarjeta por producto */}
+      <div className="md:hidden space-y-2.5">
+        {filtered.map((p) => {
+          const isBottle = isBottleTrackedSlug(p.category?.slug);
+          const status = getStockStatus(p.currentStock, p.minStock);
+          const bottleLevel = p.bottleLevel as BottleLevel | null;
+          const bottleTotal = isBottle ? bottleStock(bottleLevel, p.reserveBottles) : 0;
+          const bottleReserve = p.reserveBottles ?? 0;
+          const bottleStatus: "empty" | "low" | "ok" =
+            bottleTotal === 0 ? "empty" : bottleReserve === 0 ? "low" : "ok";
+          return (
+            <div
+              key={p.id}
+              className={`rounded-xl border p-3 flex gap-3 ${p.active ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-50/60 opacity-70"}`}
+            >
+              {p.imageUrl ? (
+                <Image
+                  src={p.imageUrl}
+                  alt={p.name}
+                  width={44}
+                  height={44}
+                  className="rounded object-cover border border-slate-100 shrink-0 h-11 w-11"
+                  unoptimized
+                />
+              ) : (
+                <div className="w-11 h-11 bg-slate-100 rounded flex items-center justify-center shrink-0">
+                  <Package className="w-5 h-5 text-slate-400" />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-2">
+                  <span className={`text-sm font-medium break-words ${p.active ? "text-slate-800" : "text-slate-400 line-through"}`}>
+                    {p.name}
+                  </span>
+                  {!p.active ? (
+                    <Badge className="bg-slate-100 text-slate-400 border-0 shrink-0">Inactivo</Badge>
+                  ) : isBottle ? (
+                    <Badge className={`${stockBadge[bottleStatus]} shrink-0`}>{stockLabel[bottleStatus]}</Badge>
+                  ) : (
+                    <Badge className={`${stockBadge[status]} shrink-0`}>{stockLabel[status]}</Badge>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {p.category?.name ?? "Sin categoría"}
+                </p>
+                <div className="flex items-center justify-between gap-2 mt-2">
+                  <div className="text-sm font-semibold text-slate-800 tabular-nums">
+                    {isBottle ? (
+                      <span className="flex items-center gap-2">
+                        <BottleLevelBadge level={bottleLevel} />
+                        {(p.reserveBottles ?? 0) > 0 && (
+                          <span className="text-xs font-normal text-slate-400">+{p.reserveBottles} res.</span>
+                        )}
+                      </span>
+                    ) : (
+                      <>
+                        {formatStock(p.currentStock, p.unit)}
+                        {p.minStock > 0 && (
+                          <span className="text-xs font-normal text-slate-400"> · mín {formatStock(p.minStock, p.unit)}</span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  {canManage && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button size="sm" variant="ghost" asChild>
+                        <Link href={`/productos/${p.id}/editar`}>
+                          <Pencil className="w-4 h-4 text-slate-400" />
+                        </Link>
+                      </Button>
+                      {p.active ? (
+                        <Button size="sm" variant="ghost" title="Desactivar producto" onClick={() => setActionTarget({ id: p.id, name: p.name, kind: "deactivate" })}>
+                          <PowerOff className="w-4 h-4 text-red-400" />
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="ghost" title="Reactivar producto" onClick={() => setActionTarget({ id: p.id, name: p.name, kind: "activate" })}>
+                          <Power className="w-4 h-4 text-emerald-500" />
+                        </Button>
+                      )}
+                      {canHardDelete && (
+                        <Button size="sm" variant="ghost" title="Eliminar permanentemente" onClick={() => setActionTarget({ id: p.id, name: p.name, kind: "hardDelete" })}>
+                          <Trash2 className="w-4 h-4 text-red-600" />
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {filtered.length === 0 && (
+          <div className="rounded-xl border border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-400">
+            No hay productos
+          </div>
+        )}
+      </div>
+
+      {/* Escritorio: tabla */}
+      <div className="hidden md:block bg-white rounded-lg border border-slate-200 overflow-x-auto">
         <table className="w-full min-w-[640px]">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">

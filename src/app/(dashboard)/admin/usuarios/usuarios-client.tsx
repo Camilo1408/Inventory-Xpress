@@ -166,7 +166,47 @@ export function UsuariosClient({ users, roles, baseRoles, catalog }: Props) {
         </Button>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg overflow-x-auto">
+      {/* Móvil: tarjeta por usuario */}
+      <div className="md:hidden space-y-2.5">
+        {users.map((u) => {
+          const overrides = u.permsGrant.length + u.permsRevoke.length;
+          return (
+            <div key={u.id} className="rounded-xl border border-slate-200 bg-white p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-slate-800 break-words">{u.username}</div>
+                  {u.name && <div className="text-xs text-slate-400">{u.name}</div>}
+                </div>
+                <Badge className={`shrink-0 ${u.active ? "bg-emerald-100 text-emerald-700 border-0" : "bg-red-100 text-red-700 border-0"}`}>
+                  {u.active ? "Activo" : "Inactivo"}
+                </Badge>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                <Badge className={baseRoleBadge[u.role] ?? "bg-slate-100 text-slate-600 border-0"}>
+                  {baseRoleLabel[u.role] ?? u.role}
+                </Badge>
+                {u.customRoleName && <span className="text-xs text-slate-500">{u.customRoleName}</span>}
+                {u.role !== "SUPERADMIN" && overrides > 0 && (
+                  <span className="text-xs text-slate-400">{overrides} overrides</span>
+                )}
+              </div>
+              <div className="flex items-center justify-end gap-1 mt-2 border-t border-slate-100 pt-2">
+                <Button size="sm" variant="ghost" title="Editar" onClick={() => openEdit(u)}>
+                  <Pencil className="w-4 h-4 text-slate-400" />
+                </Button>
+                <Button size="sm" variant="ghost" title={u.active ? "Desactivar" : "Activar"} onClick={() => handleToggle(u)}>
+                  {u.active
+                    ? <UserX className="w-4 h-4 text-amber-500" />
+                    : <UserCheck className="w-4 h-4 text-emerald-500" />}
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Escritorio: tabla */}
+      <div className="hidden md:block bg-white border border-slate-200 rounded-lg overflow-x-auto">
         <table className="w-full min-w-[720px]">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">

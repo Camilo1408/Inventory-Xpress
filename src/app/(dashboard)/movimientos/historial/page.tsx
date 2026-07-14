@@ -73,7 +73,38 @@ export default async function HistorialPage({
       </div>
 
       <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Móvil: tarjeta por movimiento */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {movements.map((m) => (
+            <div key={m.id} className="px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-800 break-words">{m.product.name}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{formatDate(m.createdAt)}</p>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span className={`text-sm font-semibold tabular-nums ${m.quantity >= 0 ? "text-blue-600" : "text-red-600"}`}>
+                    {m.quantity >= 0 ? "+" : ""}
+                    {formatStock(m.quantity, m.product.unit)}
+                  </span>
+                  <Badge className={resolveBadge(m.type, m.source)}>
+                    {resolveLabel(m.type, m.source)}
+                  </Badge>
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2 mt-2 text-xs text-slate-400">
+                <span className="truncate">{m.notes ?? "—"}</span>
+                <span className="shrink-0">{m.userName}</span>
+              </div>
+            </div>
+          ))}
+          {movements.length === 0 && (
+            <div className="px-4 py-10 text-center text-sm text-slate-400">No hay movimientos registrados</div>
+          )}
+        </div>
+
+        {/* Escritorio: tabla */}
+        <div className="hidden md:block overflow-x-auto">
         <table className="w-full min-w-[760px]">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">

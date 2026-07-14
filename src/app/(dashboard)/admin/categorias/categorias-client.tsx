@@ -38,36 +38,39 @@ function SubCategoryRow({
   onDelete: (id: string, name: string) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 pl-10 pr-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
-      <span className="text-slate-300 text-xs select-none">└</span>
-      <span className={`flex-1 min-w-[8rem] text-sm ${sub.active ? "text-slate-700" : "text-slate-400 line-through"}`}>
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-10 pr-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
+      <span className="text-slate-300 text-xs select-none shrink-0">└</span>
+      <span className={`flex-1 min-w-[6rem] text-sm truncate ${sub.active ? "text-slate-700" : "text-slate-400 line-through"}`}>
         {sub.name}
       </span>
-      <span className="text-xs text-slate-400">{sub._count.products} productos</span>
-      <Badge className={sub.active ? "bg-emerald-100 text-emerald-700 border-0 text-xs" : "bg-slate-100 text-slate-400 border-0 text-xs"}>
+      <span className="text-xs text-slate-400 shrink-0">{sub._count.products} productos</span>
+      <Badge className={`shrink-0 ${sub.active ? "bg-emerald-100 text-emerald-700 border-0 text-xs" : "bg-slate-100 text-slate-400 border-0 text-xs"}`}>
         {sub.active ? "Activa" : "Inactiva"}
       </Badge>
-      <Button size="sm" variant="ghost" onClick={() => onEdit(sub.id, sub.name)} className="h-7 w-7 p-0">
-        <Pencil className="w-3 h-3 text-slate-400" />
-      </Button>
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={() => onToggleRequest(sub.id, sub.name, sub.active)}
-        className={`h-7 text-xs px-2 ${sub.active ? "text-slate-400 hover:text-slate-600" : "text-emerald-600 hover:text-emerald-700"}`}
-      >
-        {sub.active ? "Desactivar" : "Activar"}
-      </Button>
-      {sub._count.products === 0 && (
+      <div className="flex items-center gap-1 shrink-0 ml-auto">
+        <Button size="sm" variant="ghost" onClick={() => onEdit(sub.id, sub.name)} className="h-7 w-7 p-0" title="Editar">
+          <Pencil className="w-3 h-3 text-slate-400" />
+        </Button>
         <Button
           size="sm"
           variant="ghost"
-          onClick={() => onDelete(sub.id, sub.name)}
-          className="h-7 w-7 p-0 text-red-400 hover:text-red-600 hover:bg-red-50"
+          onClick={() => onToggleRequest(sub.id, sub.name, sub.active)}
+          className={`h-7 text-xs px-2 ${sub.active ? "text-slate-400 hover:text-slate-600" : "text-emerald-600 hover:text-emerald-700"}`}
         >
-          <Trash2 className="w-3.5 h-3.5" />
+          {sub.active ? "Desactivar" : "Activar"}
         </Button>
-      )}
+        {sub._count.products === 0 && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onDelete(sub.id, sub.name)}
+            className="h-7 w-7 p-0 text-red-400 hover:text-red-600 hover:bg-red-50"
+            title="Eliminar"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -237,7 +240,7 @@ export function CategoriasClient({ categories }: { categories: Category[] }) {
           return (
             <div key={cat.id} className={idx > 0 ? "border-t border-slate-200" : ""}>
               {/* Fila categoría raíz */}
-              <div className="flex flex-wrap items-center gap-2 px-4 py-3 hover:bg-slate-50">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-3 hover:bg-slate-50">
                 {/* Toggle expand */}
                 <button
                   type="button"
@@ -279,55 +282,60 @@ export function CategoriasClient({ categories }: { categories: Category[] }) {
                   </>
                 ) : (
                   <>
-                    <span className={`flex-1 text-sm font-semibold ${cat.active ? "text-slate-800" : "text-slate-400 line-through"}`}>
+                    <span className={`flex-1 min-w-[6rem] text-sm font-semibold truncate ${cat.active ? "text-slate-800" : "text-slate-400 line-through"}`}>
                       {cat.name}
                     </span>
-                    <span className="text-xs text-slate-400">{cat._count.products} productos</span>
-                    <Badge className={cat.active ? "bg-emerald-100 text-emerald-700 border-0 text-xs" : "bg-slate-100 text-slate-400 border-0 text-xs"}>
+                    <span className="text-xs text-slate-400 shrink-0">{cat._count.products} productos</span>
+                    <Badge className={`shrink-0 ${cat.active ? "bg-emerald-100 text-emerald-700 border-0 text-xs" : "bg-slate-100 text-slate-400 border-0 text-xs"}`}>
                       {cat.active ? "Activa" : "Inactiva"}
                     </Badge>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => { setEditId(cat.id); setEditName(cat.name); }}
-                      className="h-7 w-7 p-0"
-                    >
-                      <Pencil className="w-3.5 h-3.5 text-slate-400" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleToggleRequest(cat.id, cat.name, cat.active)}
-                      className={`h-7 text-xs px-2 ${cat.active ? "text-slate-400 hover:text-slate-600" : "text-emerald-600 hover:text-emerald-700"}`}
-                    >
-                      {cat.active ? "Desactivar" : "Activar"}
-                    </Button>
-                    {/* Botón agregar subcategoría */}
-                    {cat.active && (
+                    {/* Acciones agrupadas: envuelven como bloque en móvil */}
+                    <div className="flex items-center gap-1 shrink-0 ml-auto">
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => {
-                          setAddingSub((prev) => ({ ...prev, [cat.id]: true }));
-                          setExpanded((prev) => ({ ...prev, [cat.id]: true }));
-                        }}
-                        className="h-7 text-xs text-blue-500 hover:text-blue-700 hover:bg-blue-50 px-2"
+                        onClick={() => { setEditId(cat.id); setEditName(cat.name); }}
+                        className="h-7 w-7 p-0"
+                        title="Editar"
                       >
-                        <Plus className="w-3 h-3 mr-0.5" />
-                        Subcategoría
+                        <Pencil className="w-3.5 h-3.5 text-slate-400" />
                       </Button>
-                    )}
-                    {/* Botón eliminar — solo si no tiene productos */}
-                    {cat._count.products === 0 && cat.children.every((c) => c._count.products === 0) && (
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => handleDelete(cat.id, cat.name)}
-                        className="h-7 w-7 p-0 text-red-400 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => handleToggleRequest(cat.id, cat.name, cat.active)}
+                        className={`h-7 text-xs px-2 ${cat.active ? "text-slate-400 hover:text-slate-600" : "text-emerald-600 hover:text-emerald-700"}`}
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        {cat.active ? "Desactivar" : "Activar"}
                       </Button>
-                    )}
+                      {/* Botón agregar subcategoría */}
+                      {cat.active && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setAddingSub((prev) => ({ ...prev, [cat.id]: true }));
+                            setExpanded((prev) => ({ ...prev, [cat.id]: true }));
+                          }}
+                          className="h-7 text-xs text-blue-500 hover:text-blue-700 hover:bg-blue-50 px-2"
+                        >
+                          <Plus className="w-3 h-3 mr-0.5" />
+                          Subcategoría
+                        </Button>
+                      )}
+                      {/* Botón eliminar — solo si no tiene productos */}
+                      {cat._count.products === 0 && cat.children.every((c) => c._count.products === 0) && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDelete(cat.id, cat.name)}
+                          className="h-7 w-7 p-0 text-red-400 hover:text-red-600 hover:bg-red-50"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
                   </>
                 )}
               </div>

@@ -309,13 +309,13 @@ function DiscrepancyDialog({
         <div className="max-h-72 overflow-y-auto space-y-3">
           {rows.map((r) => (
             <div key={r.productId} className="border border-slate-200 rounded-md p-3 space-y-2">
-              <div className="flex items-center justify-between text-sm gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-sm gap-1 sm:gap-2">
                 <span className="font-medium text-slate-800">{r.name}</span>
-                <span className="tabular-nums text-xs whitespace-nowrap">
+                <span className="tabular-nums text-xs flex flex-wrap items-center gap-x-1">
                   <span className="text-slate-500">Sistema {formatStock(r.system, r.unit)}</span>
-                  <span className="mx-1 text-slate-300">→</span>
+                  <span className="text-slate-300">→</span>
                   <span className="font-semibold text-slate-800">Contado {formatStock(r.counted, r.unit)}</span>
-                  <span className={`ml-2 font-medium ${r.diff > 0 ? "text-blue-600" : "text-red-600"}`}>
+                  <span className={`ml-1 font-medium ${r.diff > 0 ? "text-blue-600" : "text-red-600"}`}>
                     ({r.diff > 0 ? "+" : ""}{formatStock(r.diff, r.unit)})
                   </span>
                 </span>
@@ -547,38 +547,69 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
                 ))}
               </div>
             ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100">
-                    <th className="text-left px-4 py-2.5 font-medium text-slate-500">Producto</th>
-                    <th className="text-right px-4 py-2.5 font-medium text-slate-500">Stock sistema</th>
-                    <th className="text-right px-4 py-2.5 font-medium text-slate-500 w-36">Conteo inicial *</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
+              <>
+                {/* Móvil: fila por producto apilada, sin scroll lateral */}
+                <div className="sm:hidden divide-y divide-slate-100">
                   {products.map((p) => {
                     const isEmpty = !counts[p.id] || counts[p.id] === "0" || counts[p.id] === "";
                     return (
-                      <tr key={p.id} className={isEmpty ? "bg-red-50/40" : ""}>
-                        <td className="px-4 py-2.5 font-medium text-slate-800">{p.name}</td>
-                        <td className="px-4 py-2.5 text-right text-slate-500 tabular-nums">
-                          {formatStock(p.currentStock, p.unit)}
-                        </td>
-                        <td className="px-4 py-2.5 text-right">
-                          <Input
-                            type="text"
-                            inputMode="decimal"
-                            className={`w-28 ml-auto text-right tabular-nums ${isEmpty ? "border-red-300 focus-visible:ring-red-400" : ""}`}
-                            value={counts[p.id] ?? ""}
-                            onChange={(e) => setCounts((prev) => ({ ...prev, [p.id]: sanitizeNumericInput(e.target.value) }))}
-                            placeholder="0"
-                          />
-                        </td>
-                      </tr>
+                      <div
+                        key={p.id}
+                        className={`px-4 py-3 flex items-center justify-between gap-3 ${isEmpty ? "bg-red-50/40" : ""}`}
+                      >
+                        <div className="min-w-0">
+                          <p className="font-medium text-slate-800 text-sm truncate">{p.name}</p>
+                          <p className="text-xs text-slate-400 tabular-nums">
+                            Sistema: {formatStock(p.currentStock, p.unit)}
+                          </p>
+                        </div>
+                        <Input
+                          type="text"
+                          inputMode="decimal"
+                          className={`w-24 shrink-0 text-right tabular-nums ${isEmpty ? "border-red-300 focus-visible:ring-red-400" : ""}`}
+                          value={counts[p.id] ?? ""}
+                          onChange={(e) => setCounts((prev) => ({ ...prev, [p.id]: sanitizeNumericInput(e.target.value) }))}
+                          placeholder="0"
+                        />
+                      </div>
                     );
                   })}
-                </tbody>
-              </table>
+                </div>
+
+                {/* Escritorio: tabla */}
+                <table className="hidden sm:table w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100">
+                      <th className="text-left px-4 py-2.5 font-medium text-slate-500">Producto</th>
+                      <th className="text-right px-4 py-2.5 font-medium text-slate-500">Stock sistema</th>
+                      <th className="text-right px-4 py-2.5 font-medium text-slate-500 w-36">Conteo inicial *</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {products.map((p) => {
+                      const isEmpty = !counts[p.id] || counts[p.id] === "0" || counts[p.id] === "";
+                      return (
+                        <tr key={p.id} className={isEmpty ? "bg-red-50/40" : ""}>
+                          <td className="px-4 py-2.5 font-medium text-slate-800">{p.name}</td>
+                          <td className="px-4 py-2.5 text-right text-slate-500 tabular-nums">
+                            {formatStock(p.currentStock, p.unit)}
+                          </td>
+                          <td className="px-4 py-2.5 text-right">
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              className={`w-28 ml-auto text-right tabular-nums ${isEmpty ? "border-red-300 focus-visible:ring-red-400" : ""}`}
+                              value={counts[p.id] ?? ""}
+                              onChange={(e) => setCounts((prev) => ({ ...prev, [p.id]: sanitizeNumericInput(e.target.value) }))}
+                              placeholder="0"
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </>
             )}
           </div>
         ))}
@@ -1019,8 +1050,105 @@ function OpenView({
           </div>
         )}
 
+        {/* Móvil: una tarjeta por producto (evita la tabla de 8 columnas con scroll) */}
         {numericItems.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-lg overflow-x-auto">
+        <div className="lg:hidden space-y-3">
+          {rows.map((r) => {
+            const finalIsEmpty = r.finalStr.trim() === "" || r.finalStr === "0";
+            const unit = r.item.product.unit;
+            return (
+              <div
+                key={r.item.id}
+                className={`rounded-xl border p-4 ${finalIsEmpty ? "border-red-200 bg-red-50/30" : "border-slate-200 bg-white"}`}
+              >
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <span className="font-medium text-slate-800">{r.item.product.name}</span>
+                  <span className="text-xs text-slate-400 shrink-0">{unit}</span>
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mb-3">
+                  <span className="text-slate-500">
+                    Inicial <strong className="text-slate-700 tabular-nums">{formatStock(r.item.initialCount, unit)}</strong>
+                  </span>
+                  <span className="text-emerald-600 tabular-nums">
+                    {r.entries > 0 ? `+${formatStock(r.entries, unit)} ent.` : "sin entradas"}
+                  </span>
+                  <span className="text-red-500 tabular-nums">
+                    {r.exits > 0 ? `−${formatStock(r.exits, unit)} sal.` : "sin salidas"}
+                  </span>
+                  <span className="text-slate-500">
+                    Esperado <strong className="text-slate-800 tabular-nums">{formatStock(r.calculated, unit)}</strong>
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-emerald-700 mb-1">Entrada NR</label>
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      className="w-full text-right tabular-nums"
+                      value={r.entryStr}
+                      onChange={(e) =>
+                        setUnregEntries((prev) => ({ ...prev, [r.item.productId]: sanitizeNumericInput(e.target.value) }))
+                      }
+                      placeholder={r.autoEntry > 0 ? `auto ${r.autoEntry}` : "0"}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-red-600 mb-1">Salida NR</label>
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      className="w-full text-right tabular-nums"
+                      value={r.exitStr}
+                      onChange={(e) =>
+                        setUnregExits((prev) => ({ ...prev, [r.item.productId]: sanitizeNumericInput(e.target.value) }))
+                      }
+                      placeholder={r.autoExit > 0 ? `auto ${r.autoExit}` : "0"}
+                    />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <label className="block text-xs font-medium text-slate-800 mb-1">Conteo real *</label>
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    className={`w-full text-right tabular-nums ${finalIsEmpty ? "border-red-300 focus-visible:ring-red-400" : ""}`}
+                    value={r.finalStr}
+                    onChange={(e) =>
+                      setFinalCounts((prev) => ({ ...prev, [r.item.productId]: sanitizeNumericInput(e.target.value) }))
+                    }
+                    placeholder="0"
+                  />
+                </div>
+                {r.effEntry > 0 && (
+                  <div className="mt-3 rounded-md bg-emerald-50/60 p-2.5 space-y-2">
+                    <span className="block text-xs font-medium text-emerald-700">
+                      Justifica la entrada NR (+{formatStock(r.effEntry, unit)}):
+                    </span>
+                    <Input
+                      type="text"
+                      placeholder="Motivo (por qué no se registró)"
+                      value={entryReasons[r.item.productId] ?? ""}
+                      onChange={(ev) => setEntryReasons((p) => ({ ...p, [r.item.productId]: ev.target.value }))}
+                      className="text-sm w-full"
+                    />
+                    <Input
+                      type="time"
+                      value={entryTimes[r.item.productId] ?? ""}
+                      onChange={(ev) => setEntryTimes((p) => ({ ...p, [r.item.productId]: ev.target.value }))}
+                      className="text-sm w-full"
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        )}
+
+        {/* Escritorio: tabla completa */}
+        {numericItems.length > 0 && (
+        <div className="hidden lg:block bg-white border border-slate-200 rounded-lg overflow-x-auto">
           <table className="w-full text-sm min-w-[1100px]">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
@@ -1263,8 +1391,36 @@ function ClosedView({
         </div>
       )}
 
+      {/* Móvil: tarjeta de resultados por producto */}
       {numericItems.length > 0 && (
-      <div className="bg-white border border-slate-200 rounded-lg overflow-x-auto">
+      <div className="lg:hidden space-y-3">
+        {rows.map((r) => {
+          const unit = r.item.product.unit;
+          return (
+            <div key={r.item.id} className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="font-medium text-slate-800">{r.item.product.name}</span>
+                <span className="text-sm font-semibold text-slate-800 tabular-nums">
+                  {formatStock(r.finalCount, unit)}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+                <span>Inicial <strong className="text-slate-600 tabular-nums">{formatStock(r.item.initialCount, unit)}</strong></span>
+                {r.entries > 0 && <span className="text-emerald-600 tabular-nums">+{formatStock(r.entries, unit)} ent.</span>}
+                {r.exits > 0 && <span className="text-red-500 tabular-nums">−{formatStock(r.exits, unit)} sal.</span>}
+                {r.unregEntry > 0 && <span className="text-emerald-700 tabular-nums">+{formatStock(r.unregEntry, unit)} NR</span>}
+                {r.unregExit > 0 && <span className="text-red-600 tabular-nums">−{formatStock(r.unregExit, unit)} NR</span>}
+                <span>Esperado <strong className="text-slate-600 tabular-nums">{formatStock(r.calculated, unit)}</strong></span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      )}
+
+      {/* Escritorio: tabla de resultados */}
+      {numericItems.length > 0 && (
+      <div className="hidden lg:block bg-white border border-slate-200 rounded-lg overflow-x-auto">
         <table className="w-full text-sm min-w-[860px]">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">

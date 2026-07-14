@@ -131,8 +131,45 @@ export function RolesClient({ roles, catalog, baseRoles }: Props) {
         </Button>
       </div>
 
-      {/* Roles personalizados */}
-      <div className="bg-white border border-slate-200 rounded-lg overflow-x-auto">
+      {/* Roles personalizados — móvil: tarjetas */}
+      <div className="md:hidden space-y-2.5">
+        {roles.map((r) => (
+          <div key={r.id} className="rounded-xl border border-slate-200 bg-white p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-slate-800 break-words">{r.name}</div>
+                {r.description && <div className="text-xs text-slate-400 mt-0.5 break-words">{r.description}</div>}
+              </div>
+              <Badge className={`shrink-0 ${r.active ? "bg-emerald-100 text-emerald-700 border-0" : "bg-slate-100 text-slate-400 border-0"}`}>
+                {r.active ? "Activo" : "Inactivo"}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
+              <span>{r.permissions.length} permisos</span>
+              <span>{r.userCount} usuarios</span>
+            </div>
+            <div className="flex items-center justify-end gap-1 mt-2 border-t border-slate-100 pt-2">
+              <Button size="sm" variant="ghost" title="Editar" onClick={() => openEdit(r)}>
+                <Pencil className="w-4 h-4 text-slate-400" />
+              </Button>
+              <Button size="sm" variant="ghost" title={r.active ? "Desactivar" : "Activar"} onClick={() => handleToggleActive(r)}>
+                <Power className={`w-4 h-4 ${r.active ? "text-amber-500" : "text-emerald-500"}`} />
+              </Button>
+              <Button size="sm" variant="ghost" title="Eliminar" onClick={() => setDeleteTarget(r)}>
+                <Trash2 className="w-4 h-4 text-red-500" />
+              </Button>
+            </div>
+          </div>
+        ))}
+        {roles.length === 0 && (
+          <div className="rounded-xl border border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-400">
+            No hay roles personalizados. Crea uno para asignar permisos a medida.
+          </div>
+        )}
+      </div>
+
+      {/* Roles personalizados — escritorio: tabla */}
+      <div className="hidden md:block bg-white border border-slate-200 rounded-lg overflow-x-auto">
         <table className="w-full min-w-[640px]">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">

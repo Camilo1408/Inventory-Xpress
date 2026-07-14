@@ -131,9 +131,31 @@ export function AlertasClient({ alerts, bottleAlerts }: { alerts: AlertItem[]; b
                   </div>
                 )}
 
-                {/* Ítems numéricos */}
+                {/* Ítems numéricos — móvil: tarjetas */}
                 {numericItems.length > 0 && (
-                  <table className="w-full min-w-[620px]">
+                  <div className="md:hidden divide-y divide-slate-100">
+                    {numericItems.map(({ data: a }) => (
+                      <div key={a.id} className="px-4 py-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-slate-800 break-words">{a.name}</span>
+                          <Badge className={`shrink-0 ${a.currentStock <= 0 ? "bg-red-100 text-red-700 border-0" : "bg-amber-100 text-amber-700 border-0"}`}>
+                            {a.currentStock <= 0 ? "Sin stock" : "Bajo mínimo"}
+                          </Badge>
+                        </div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2">
+                          <span className="text-slate-500">Actual <strong className="text-slate-800 tabular-nums">{formatStock(a.currentStock, a.unit)}</strong></span>
+                          <span className="text-slate-500">Mín <strong className="text-slate-600 tabular-nums">{formatStock(a.minStock, a.unit)}</strong></span>
+                          <span className="text-red-600 tabular-nums">Déficit {formatStock(a.deficit, a.unit)}</span>
+                          <span className="text-blue-600 font-semibold tabular-nums">A pedir {formatStock(a.quantityToOrder, a.unit)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Ítems numéricos — escritorio: tabla */}
+                {numericItems.length > 0 && (
+                  <table className="hidden md:table w-full min-w-[620px]">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-100">
                         <th className="text-left text-xs font-medium text-slate-400 uppercase tracking-wide px-4 py-2">Producto</th>
