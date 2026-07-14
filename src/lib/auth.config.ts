@@ -11,7 +11,12 @@ const AUTH_COOKIE_DOMAIN = process.env.AUTH_COOKIE_DOMAIN?.trim();
 const sharedSessionCookie = AUTH_COOKIE_DOMAIN
   ? {
       sessionToken: {
-        name: "__Secure-authjs.session-token",
+        // Nombre propio a propósito (no el default "__Secure-authjs.session-token").
+        // DEBE ser idéntico al de nómina: es el nombre de cookie que emite nómina
+        // y también la sal de cifrado del JWT compartido, así que el inventario
+        // tiene que leer/descifrar exactamente este nombre. Ver nota en el auth.ts
+        // de nómina sobre por qué se renombró (evita colisión con cookies viejas).
+        name: "__Secure-nx.session-token",
         options: {
           httpOnly: true,
           sameSite: "lax" as const,
