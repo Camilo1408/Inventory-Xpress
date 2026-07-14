@@ -86,7 +86,7 @@ export function ReportesClient({ categories }: { categories: Category[] }) {
 
         {/* Período */}
         <Select value={period} onValueChange={setPeriod}>
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-full sm:w-44">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -99,7 +99,7 @@ export function ReportesClient({ categories }: { categories: Category[] }) {
 
         {/* Categoría raíz */}
         <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v); setSubcategoryFilter("all"); }}>
-          <SelectTrigger className="w-48">
+          <SelectTrigger className="w-full sm:w-48">
             <SelectValue placeholder="Todas las categorías" />
           </SelectTrigger>
           <SelectContent>
@@ -113,7 +113,7 @@ export function ReportesClient({ categories }: { categories: Category[] }) {
         {/* Subcategoría — solo cuando hay una raíz seleccionada con opciones */}
         {categoryFilter !== "all" && subcategoryOptions.length > 0 && (
           <Select value={subcategoryFilter} onValueChange={setSubcategoryFilter}>
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-full sm:w-48">
               <SelectValue placeholder="Todas las subcategorías" />
             </SelectTrigger>
             <SelectContent>
@@ -200,7 +200,42 @@ export function ReportesClient({ categories }: { categories: Category[] }) {
           <span className="text-xs text-slate-400">{filtered.length} productos</span>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Móvil: tarjeta por producto */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {loading ? (
+            <div className="px-4 py-10 text-center text-sm text-slate-400">Cargando...</div>
+          ) : filtered.length === 0 ? (
+            <div className="px-4 py-10 text-center text-sm text-slate-400">
+              {rows.length === 0 ? "No hay productos registrados" : "Ningún producto coincide con los filtros seleccionados"}
+            </div>
+          ) : (
+            filtered.map((row) => (
+              <div key={row.id} className={`px-4 py-3 ${!row.active ? "opacity-60" : ""}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-sm font-medium text-slate-800 break-words">{row.name}</span>
+                  {row.active
+                    ? <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs shrink-0">Activo</Badge>
+                    : <Badge className="bg-slate-100 text-slate-400 border-0 text-xs shrink-0">Inactivo</Badge>
+                  }
+                </div>
+                {(row.category || row.subcategory) && (
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {[row.category, row.subcategory].filter(Boolean).join(" · ")}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2">
+                  <span className="text-slate-500">Inicial <strong className="text-slate-600 tabular-nums">{formatStock(row.stockInitial, row.unit)}</strong></span>
+                  {row.entries > 0 && <span className="text-emerald-600 tabular-nums">+{formatStock(row.entries, row.unit)}</span>}
+                  {row.exits > 0 && <span className="text-red-500 tabular-nums">{formatStock(row.exits, row.unit)}</span>}
+                  <span className="text-slate-500">Actual <strong className="text-slate-800 tabular-nums">{formatStock(row.currentStock, row.unit)}</strong></span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Escritorio: tabla */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-slate-200">

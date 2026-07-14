@@ -118,7 +118,35 @@ export default async function AuditoriaPage({
       </div>
 
       <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Móvil: tarjeta por evento */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {logs.map((l) => (
+            <div key={l.id} className="px-4 py-3 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <Badge className={ACTION_BADGE[l.action] ?? "bg-slate-100 text-slate-600 border-0"}>
+                  {ACTION_LABEL[l.action] ?? l.action}
+                </Badge>
+                {l.result === "denied" ? (
+                  <Badge className="bg-red-100 text-red-700 border-0 shrink-0">Denegado</Badge>
+                ) : (
+                  <Badge className="bg-emerald-100 text-emerald-700 border-0 shrink-0">OK</Badge>
+                )}
+              </div>
+              {l.summary && <p className="text-sm text-slate-600 break-words">{l.summary}</p>}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-400">
+                <span className="font-medium text-slate-500">{l.userName}</span>
+                {l.categoryName && <span>· {l.categoryName}</span>}
+                <span>· {formatDate(l.createdAt)}</span>
+              </div>
+            </div>
+          ))}
+          {logs.length === 0 && (
+            <div className="px-4 py-10 text-center text-sm text-slate-400">No hay eventos registrados</div>
+          )}
+        </div>
+
+        {/* Escritorio: tabla */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm min-w-[820px]">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
