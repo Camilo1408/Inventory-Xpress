@@ -89,6 +89,20 @@ export function emptyOpenBottle(
   return { level: null, reserve: 0 };
 }
 
+// ─── Indicador shots/copeo ──────────────────────────────────────────────────
+// Un único indicador booleano (no dos estados): la botella está marcada para
+// shots/copeo, o no lo está. Solo aplica a las subcategorías Licores y Vinos
+// (no a Cócteles, que ya tiene su propio control por nivel de botella). Se
+// activa/desactiva al abrir o cerrar el inventario diario.
+
+export const SHOTS_COPEO_SLUGS: readonly string[] = ["licores", "vinos"];
+
+/** ¿La subcategoría con este slug admite el indicador shots/copeo? */
+export function isShotsCopeoTrackedSlug(slug: string | null | undefined): boolean {
+  if (!config.features.cocktails) return false;
+  return !!slug && SHOTS_COPEO_SLUGS.includes(slug);
+}
+
 /**
  * Regla de alerta de compra:
  *   orden(nivel) <= orden(umbral ?? default)  Y  (reserva ?? 0) === 0

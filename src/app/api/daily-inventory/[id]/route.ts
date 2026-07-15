@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { canDailyCategory, canDoStockCount, canReopenDailyInventory, canManageOpenDaily, type DailyAction } from "@/lib/permissions";
-import { isBottleTrackedSlug, isBottleLevel, bottleStock } from "@/lib/bottle";
+import { isBottleTrackedSlug, isBottleLevel, isShotsCopeoTrackedSlug, bottleStock } from "@/lib/bottle";
 import { audit } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/lib/config";
@@ -15,6 +15,7 @@ interface FinalCountItem {
   entryTime?: string | null;   // hora de ingreso "HH:MM"
   bottleLevel?: string | null;
   reserveBottles?: number | null;
+  shotsCopeo?: boolean;
 }
 
 interface PatchBody {
@@ -96,46 +97,81 @@ export async function PATCH(
     );
     if (invalid) return NextResponse.json({ error: "Datos inválidos en initialCounts" }, { status: 400 });
 
-    // Los productos de botella no llevan conteo numérico inicial (no aplica aquí).
-    const numericItems = inventory.items.filter((i) => !isBottleTrackedSlug(i.product.category?.slug));
-    const byProduct = new Map(initialCounts.map((ic) => [ic.productId, ic.initialCount]));
+    // Categoría raíz de la jornada + subcategorías: define qué productos "pertenecen"
+    // a esta jornada (para validar los productos NUEVOS agregados durante el día).
+    let catIds: string[] = [];
+    if (inventory.categoryId) {
+      const kids = await prisma.category.findMany({ where: { parentId: inventory.categoryId }, select: { id: true } });
+      catIds = [inventory.categoryId, ...kids.map((k) => k.id)];
+    }
 
-    // Movimientos "daily_open_adjust" existentes (creados al abrir, si el conteo
-    // inicial difería del stock del sistema en ese momento).
-    const itemIds = numericItems.map((i) => i.id);
+    // Productos candidatos del payload: solo activos, de esta categoría. Un producto
+    // creado DESPUÉS de abrir la jornada llega aquí sin ítem previo → se le crea uno.
+    const candidateProducts = catIds.length
+      ? await prisma.product.findMany({
+          where: { id: { in: initialCounts.map((ic) => ic.productId) }, active: true, categoryId: { in: catIds } },
+          select: { id: true, currentStock: true, category: { select: { slug: true } } },
+        })
+      : [];
+    const productById = new Map(candidateProducts.map((p) => [p.id, p]));
+    const itemByProduct = new Map(inventory.items.map((i) => [i.productId, i]));
+
+    // Ajustes de apertura existentes (para editar en vez de duplicar).
     const existingAdjust = await prisma.stockMovement.findMany({
-      where: { dailyInventoryItemId: { in: itemIds }, source: "daily_open_adjust" },
+      where: { dailyInventoryItemId: { in: inventory.items.map((i) => i.id) }, source: "daily_open_adjust" },
       select: { id: true, dailyInventoryItemId: true, quantity: true },
     });
     const adjustByItem = new Map(existingAdjust.map((m) => [m.dailyInventoryItemId!, m]));
 
+    const note = `Corrección de conteo inicial (jornada abierta) por ${userName} — inventario diario ${inventory.date}`;
+
     await prisma.$transaction(async (tx) => {
-      for (const item of numericItems) {
-        const newCount = byProduct.get(item.productId);
-        if (newCount === undefined || newCount === item.initialCount) continue;
+      for (const ic of initialCounts) {
+        const prod = productById.get(ic.productId);
+        // Ignora productos que no son de esta categoría, están inactivos, o son de
+        // botella (esos no llevan conteo numérico inicial).
+        if (!prod || isBottleTrackedSlug(prod.category?.slug)) continue;
 
-        // delta = diferencia respecto al conteo inicial PREVIO (no al stock actual),
-        // así se preserva cualquier movimiento manual (entrada/salida) que ya haya
-        // ocurrido hoy después de abrir la jornada.
-        const delta = newCount - item.initialCount;
-        const existing = adjustByItem.get(item.id);
-        const newAdjustQty = (existing?.quantity ?? 0) + delta;
-        const note = `Corrección de conteo inicial (jornada abierta) por ${userName} — inventario diario ${inventory.date}`;
+        const item = itemByProduct.get(ic.productId);
 
-        await tx.dailyInventoryItem.update({ where: { id: item.id }, data: { initialCount: newCount } });
+        if (item) {
+          // ── Producto YA en la jornada: corrige su conteo inicial ──────────────
+          if (ic.initialCount === item.initialCount) continue;
+          // delta respecto al conteo inicial PREVIO: preserva movimientos manuales
+          // que ya hayan ocurrido hoy después de abrir la jornada.
+          const delta = ic.initialCount - item.initialCount;
+          const existing = adjustByItem.get(item.id);
+          const newAdjustQty = (existing?.quantity ?? 0) + delta;
 
-        if (existing) {
-          await tx.stockMovement.update({ where: { id: existing.id }, data: { quantity: newAdjustQty, notes: note } });
-        } else if (newAdjustQty !== 0) {
-          await tx.stockMovement.create({
-            data: {
-              productId: item.productId, type: "ADJUSTMENT", quantity: newAdjustQty, notes: note,
-              userId, userName, dailyInventoryItemId: item.id, source: "daily_open_adjust",
-            },
+          await tx.dailyInventoryItem.update({ where: { id: item.id }, data: { initialCount: ic.initialCount } });
+          if (existing) {
+            await tx.stockMovement.update({ where: { id: existing.id }, data: { quantity: newAdjustQty, notes: note } });
+          } else if (newAdjustQty !== 0) {
+            await tx.stockMovement.create({
+              data: {
+                productId: ic.productId, type: "ADJUSTMENT", quantity: newAdjustQty, notes: note,
+                userId, userName, dailyInventoryItemId: item.id, source: "daily_open_adjust",
+              },
+            });
+          }
+          await tx.product.update({ where: { id: ic.productId }, data: { currentStock: { increment: delta } } });
+        } else {
+          // ── Producto NUEVO (creado durante la jornada): se suma al conteo ──────
+          // Reconcilia el stock igual que la apertura: delta = conteo − stock actual.
+          const created = await tx.dailyInventoryItem.create({
+            data: { dailyInventoryId: id, productId: ic.productId, initialCount: ic.initialCount },
           });
+          const delta = ic.initialCount - prod.currentStock;
+          if (delta !== 0) {
+            await tx.stockMovement.create({
+              data: {
+                productId: ic.productId, type: "ADJUSTMENT", quantity: delta, notes: note,
+                userId, userName, dailyInventoryItemId: created.id, source: "daily_open_adjust",
+              },
+            });
+            await tx.product.update({ where: { id: ic.productId }, data: { currentStock: { increment: delta } } });
+          }
         }
-
-        await tx.product.update({ where: { id: item.productId }, data: { currentStock: { increment: delta } } });
       }
     });
 
@@ -235,9 +271,14 @@ export async function PATCH(
   const bottleProductIds = new Set(
     invProducts.filter((p) => isBottleTrackedSlug(p.category?.slug)).map((p) => p.id)
   );
+  // Licores/Vinos: únicas subcategorías donde aplica el indicador shots/copeo.
+  const shotsCopeoEligibleIds = new Set(
+    invProducts.filter((p) => isShotsCopeoTrackedSlug(p.category?.slug)).map((p) => p.id)
+  );
 
   const invalid = finalCounts.some((fc) => {
     if (typeof fc.productId !== "string") return true;
+    if (fc.shotsCopeo != null && typeof fc.shotsCopeo !== "boolean") return true;
     if (bottleProductIds.has(fc.productId)) {
       if (fc.bottleLevel != null && !isBottleLevel(fc.bottleLevel)) return true;
       if (fc.reserveBottles != null && (typeof fc.reserveBottles !== "number" || fc.reserveBottles < 0 || !Number.isInteger(fc.reserveBottles))) return true;
@@ -319,7 +360,10 @@ export async function PATCH(
       const entryReason = (fc.entryReason ?? "").trim() || null;
       const entryTime   = (fc.entryTime ?? "").trim() || null;
 
-      return { item, finalCount: fc.finalCount, e, x, entryReason, entryTime };
+      const shotsCopeoEligible = shotsCopeoEligibleIds.has(fc.productId);
+      const shotsCopeo = shotsCopeoEligible ? !!fc.shotsCopeo : false;
+
+      return { item, finalCount: fc.finalCount, e, x, entryReason, entryTime, shotsCopeo, shotsCopeoEligible };
     });
 
   // Las entradas no registradas exigen motivo y hora de ingreso (trazabilidad).
@@ -333,7 +377,7 @@ export async function PATCH(
   // Cierre transaccional: persistir conteos, generar/editar movimientos y ajustar stock por delta.
   await prisma.$transaction(async (tx) => {
     for (const c of computed) {
-      const { item, finalCount, e, x, entryReason, entryTime } = c;
+      const { item, finalCount, e, x, entryReason, entryTime, shotsCopeo, shotsCopeoEligible } = c;
 
       // Stock base = stock actual SIN los movimientos de cierres previos de este ítem.
       // Garantiza idempotencia al recerrar y que el stock final == conteo final.
@@ -348,8 +392,13 @@ export async function PATCH(
           unregisteredExit: x,
           unregEntryReason: e > 0 ? entryReason : null,
           unregEntryTime:   e > 0 ? entryTime   : null,
+          ...(shotsCopeoEligible ? { shotsCopeo } : {}),
         },
       });
+      // Write-through a Product: solo para Licores/Vinos (única subcategoría elegible).
+      if (shotsCopeoEligible) {
+        await tx.product.update({ where: { id: item.productId }, data: { shotsCopeo } });
+      }
 
       const entryNote = e > 0
         ? `Entrada no registrada — inventario diario ${inventory.date}. Hora: ${entryTime}. Motivo: ${entryReason}`

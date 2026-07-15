@@ -6,6 +6,7 @@ import { Package, Bell, TrendingUp, TrendingDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatDate, formatStock, getStockStatus } from "@/lib/utils";
 import { needsRestock, isBottleLevel, isBottleTrackedSlug } from "@/lib/bottle";
+import { getNumericAlertProducts } from "@/lib/alert-data";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -22,10 +23,8 @@ export default async function DashboardPage() {
     recentMovements,
   ] = await Promise.all([
     prisma.product.count({ where: { active: true } }),
-    prisma.product.findMany({
-      where: { active: true, minStock: { gt: 0 } },
-      select: { currentStock: true, minStock: true },
-    }),
+    // Consulta compartida (cacheada por petición) con el badge del layout.
+    getNumericAlertProducts(),
     prisma.product.findMany({
       where: { active: true, bottleLevel: { not: null } },
       select: { bottleLevel: true, reserveBottles: true, alertBottleLevel: true, category: { select: { slug: true } } },
@@ -41,7 +40,11 @@ export default async function DashboardPage() {
     }),
   ]);
 
-  const alertCount = alertProducts.filter((p) => p.currentStock <= p.minStock).length;
+  // Bajo mínimo: se deriva de la MISMA lista (ya ordenada por nombre e incluye
+  // categoría), sin una consulta extra a la BD.
+  const belowMin = alertProducts.filter((p) => p.currentStock <= p.minStock);
+  const alertCount = belowMin.length;
+  const lowStockProducts = belowMin.slice(0, 8);
   const bottleAlertCount = bottleAlertProducts.filter(
     (p) =>
       isBottleTrackedSlug(p.category?.slug ?? null) &&
@@ -54,12 +57,6 @@ export default async function DashboardPage() {
   const totalAlerts = alertCount + bottleAlertCount;
   const entradasHoy = todayMovements.filter((m) => m.type === "ENTRY").length;
   const salidasHoy = todayMovements.filter((m) => m.type === "EXIT").length;
-
-  const lowStockProducts = await prisma.product.findMany({
-    where: { active: true, minStock: { gt: 0 } },
-    include: { category: { select: { name: true } } },
-    orderBy: { name: "asc" },
-  }).then((products) => products.filter((p) => p.currentStock <= p.minStock).slice(0, 8));
 
   const stats = [
     { label: "Productos activos", value: totalProducts, icon: Package, color: "text-blue-600", bg: "bg-blue-50" },

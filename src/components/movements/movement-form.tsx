@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { ChevronDown, Search, X, Ban } from "lucide-react";
 import { isBottleTrackedSlug, isBottleLevel, bottleStock, emptyOpenBottle, type BottleLevel } from "@/lib/bottle";
 import { BottleLevelSelector, BottleLevelBadge, ReserveCounter } from "@/components/inventario/bottle-level-selector";
-import { sanitizeNumericInput } from "@/lib/numeric";
+import { sanitizeNumericInput, parseNumericValue } from "@/lib/numeric";
 
 interface Product {
   id: string;
@@ -225,7 +225,7 @@ export function MovementForm({ products, canAdjust }: { products: Product[]; can
         type: bottleType,
         ...(bottleType === "BOTTLE_ADJUST"
           ? { bottleLevel, reserveBottles }
-          : { quantity: Math.ceil(parseFloat(quantity) || 0) }),
+          : { quantity: Math.ceil(parseNumericValue(quantity) || 0) }),
         notes: notes.trim() || undefined,
       }),
     });
@@ -253,7 +253,7 @@ export function MovementForm({ products, canAdjust }: { products: Product[]; can
       toast.error("Ingresa la cantidad");
       return;
     }
-    const qty = parseFloat(quantity);
+    const qty = parseNumericValue(quantity);
     if (isNaN(qty) || qty === 0) {
       toast.error("Cantidad inválida");
       return;

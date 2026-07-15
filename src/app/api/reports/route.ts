@@ -42,21 +42,23 @@ export async function GET(req: Request) {
 
   const dateFrom = getPeriodDateFrom(period);
 
-  // Todos los productos con categoría y categoría padre
-  const products = await prisma.product.findMany({
-    include: {
-      category: {
-        include: { parent: { select: { id: true, name: true } } },
+  // Productos + movimientos del período en paralelo (son independientes).
+  const [products, movements] = await Promise.all([
+    // Todos los productos con categoría y categoría padre
+    prisma.product.findMany({
+      include: {
+        category: {
+          include: { parent: { select: { id: true, name: true } } },
+        },
       },
-    },
-    orderBy: [{ active: "desc" }, { name: "asc" }],
-  });
-
-  // Movimientos del período (todos los productos)
-  const movements = await prisma.stockMovement.findMany({
-    where: dateFrom ? { createdAt: { gte: dateFrom } } : {},
-    select: { productId: true, type: true, quantity: true },
-  });
+      orderBy: [{ active: "desc" }, { name: "asc" }],
+    }),
+    // Movimientos del período (todos los productos)
+    prisma.stockMovement.findMany({
+      where: dateFrom ? { createdAt: { gte: dateFrom } } : {},
+      select: { productId: true, type: true, quantity: true },
+    }),
+  ]);
 
   // Acumular por producto:
   // - entries: suma de cantidades positivas (ENTRY y ajustes positivos)

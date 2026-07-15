@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { canViewDailyCategory, canOpenDailyCategory } from "@/lib/permissions";
-import { isBottleTrackedSlug, isBottleLevel } from "@/lib/bottle";
+import { isBottleTrackedSlug, isBottleLevel, isShotsCopeoTrackedSlug } from "@/lib/bottle";
 import { audit } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/lib/config";
@@ -12,6 +12,7 @@ interface CreateItem {
   note?: string;
   bottleLevel?: string | null;
   reserveBottles?: number | null;
+  shotsCopeo?: boolean;
 }
 
 interface CreateBody {
@@ -140,6 +141,7 @@ export async function POST(req: NextRequest) {
 
   const invalid = items.some((i) => {
     if (typeof i.productId !== "string") return true;
+    if (i.shotsCopeo != null && typeof i.shotsCopeo !== "boolean") return true;
     const isBottle = isBottleTrackedSlug(loaded.slugByProduct.get(i.productId));
     if (isBottle) {
       if (i.bottleLevel != null && !isBottleLevel(i.bottleLevel)) return true;
@@ -177,12 +179,14 @@ export async function POST(req: NextRequest) {
       userName,
       items: {
         create: items.map((i) => {
-          const isBottle = isBottleTrackedSlug(loaded.slugByProduct.get(i.productId));
+          const slug = loaded.slugByProduct.get(i.productId);
+          const isBottle = isBottleTrackedSlug(slug);
           return {
             productId: i.productId,
             initialCount: isBottle ? 0 : i.initialCount,
             bottleLevel: isBottle && isBottleLevel(i.bottleLevel) ? i.bottleLevel : null,
             reserveBottles: isBottle ? (i.reserveBottles ?? 0) : null,
+            shotsCopeo: isShotsCopeoTrackedSlug(slug) ? !!i.shotsCopeo : false,
           };
         }),
       },

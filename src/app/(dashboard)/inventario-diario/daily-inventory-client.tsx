@@ -18,9 +18,9 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { formatStock } from "@/lib/utils";
-import { BottleLevelSelector, ReserveCounter, BottleLevelBadge } from "@/components/inventario/bottle-level-selector";
-import { isBottleTrackedSlug, isBottleLevel, emptyOpenBottle, type BottleLevel } from "@/lib/bottle";
-import { sanitizeNumericInput } from "@/lib/numeric";
+import { BottleLevelSelector, ReserveCounter, BottleLevelBadge, ShotsCopeoToggle, ShotsCopeoBadge } from "@/components/inventario/bottle-level-selector";
+import { isBottleTrackedSlug, isBottleLevel, isShotsCopeoTrackedSlug, emptyOpenBottle, type BottleLevel } from "@/lib/bottle";
+import { sanitizeNumericInput, parseNumericValue } from "@/lib/numeric";
 import {
   ClipboardList,
   CheckCircle2,
@@ -47,12 +47,13 @@ interface Product {
   category: { name: string; slug: string | null } | null;
   bottleLevel?: string | null;
   reserveBottles?: number | null;
+  shotsCopeo?: boolean;
 }
 
 interface InventoryItem {
   id: string;
   productId: string;
-  product: { id: string; name: string; unit: string; currentStock: number; bottleLevel?: string | null; reserveBottles?: number | null; category?: { slug: string | null } | null };
+  product: { id: string; name: string; unit: string; currentStock: number; bottleLevel?: string | null; reserveBottles?: number | null; shotsCopeo?: boolean; category?: { slug: string | null } | null };
   initialCount: number;
   finalCount: number | null;
   unregisteredEntry: number | null;
@@ -61,6 +62,7 @@ interface InventoryItem {
   unregEntryTime?: string | null;
   bottleLevel?: string | null;
   reserveBottles?: number | null;
+  shotsCopeo?: boolean;
 }
 
 interface DailyInventory {
@@ -127,10 +129,10 @@ function calcMovements(movements: Movement[], productId: string) {
   return { entries, exits };
 }
 
-/** Parser: "" o NaN → null, lo demás → número >= 0 (negativos → 0). */
+/** Parser: "" o NaN → null, lo demás → número >= 0 (negativos → 0). Admite fracciones ("1/2", "7 1/2"). */
 function parseField(value: string | undefined): number | null {
   if (value === undefined || value.trim() === "") return null;
-  const n = parseFloat(value);
+  const n = parseNumericValue(value);
   if (isNaN(n)) return null;
   return n < 0 ? 0 : n;
 }
@@ -359,6 +361,7 @@ interface StartItem {
   note?: string;
   bottleLevel?: BottleLevel | null;
   reserveBottles?: number | null;
+  shotsCopeo?: boolean;
 }
 
 function CreateView({ date, allProducts, category }: { date: string; allProducts: Product[]; category: InventoryCategory }) {
@@ -381,6 +384,14 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
   const [reserves, setReserves] = useState<Record<string, number>>(() =>
     Object.fromEntries(
       allProducts.filter((p) => productIsBottle(p)).map((p) => [p.id, p.reserveBottles ?? 0])
+    )
+  );
+  // Indicador shots/copeo — solo Licores y Vinos (productos numéricos, no botella).
+  const [shotsCopeoFlags, setShotsCopeoFlags] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(
+      allProducts
+        .filter((p) => isShotsCopeoTrackedSlug(p.category?.slug))
+        .map((p) => [p.id, !!p.shotsCopeo])
     )
   );
 
@@ -414,7 +425,11 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
           reserveBottles: reserves[p.id] ?? 0,
         };
       }
-      return { productId: p.id, initialCount: parseFloat(counts[p.id] ?? "") || 0 };
+      return {
+        productId: p.id,
+        initialCount: parseNumericValue(counts[p.id]) || 0,
+        shotsCopeo: isShotsCopeoTrackedSlug(p.category?.slug) ? (shotsCopeoFlags[p.id] ?? false) : undefined,
+      };
     });
   }
 
@@ -561,7 +576,15 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
                         className={`px-4 py-3 flex items-center justify-between gap-3 ${isEmpty ? "bg-red-50/40" : ""}`}
                       >
                         <div className="min-w-0">
-                          <p className="font-medium text-slate-800 text-sm truncate">{p.name}</p>
+                          <p className="font-medium text-slate-800 text-sm truncate flex items-center gap-1.5">
+                            <span className="truncate">{p.name}</span>
+                            {isShotsCopeoTrackedSlug(p.category?.slug) && (
+                              <ShotsCopeoToggle
+                                value={shotsCopeoFlags[p.id] ?? false}
+                                onChange={(v) => setShotsCopeoFlags((prev) => ({ ...prev, [p.id]: v }))}
+                              />
+                            )}
+                          </p>
                           <p className="text-xs text-slate-400 tabular-nums">
                             Sistema: {formatStock(p.currentStock, p.unit)}
                           </p>
@@ -593,7 +616,17 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
                       const isEmpty = !counts[p.id] || counts[p.id] === "0" || counts[p.id] === "";
                       return (
                         <tr key={p.id} className={isEmpty ? "bg-red-50/40" : ""}>
-                          <td className="px-4 py-2.5 font-medium text-slate-800">{p.name}</td>
+                          <td className="px-4 py-2.5 font-medium text-slate-800">
+                            <div className="flex items-center gap-1.5">
+                              <span>{p.name}</span>
+                              {isShotsCopeoTrackedSlug(p.category?.slug) && (
+                                <ShotsCopeoToggle
+                                  value={shotsCopeoFlags[p.id] ?? false}
+                                  onChange={(v) => setShotsCopeoFlags((prev) => ({ ...prev, [p.id]: v }))}
+                                />
+                              )}
+                            </div>
+                          </td>
                           <td className="px-4 py-2.5 text-right text-slate-500 tabular-nums">
                             {formatStock(p.currentStock, p.unit)}
                           </td>
@@ -670,6 +703,7 @@ interface CloseItem {
   entryTime: string | null;
   bottleLevel: BottleLevel | null;
   reserveBottles: number | null;
+  shotsCopeo?: boolean;
 }
 
 /** Producto con entrada no registrada que requiere justificación (motivo + hora). */
@@ -784,14 +818,29 @@ function OpenView({
   category,
   canClose,
   canManageOpen,
+  allProducts,
 }: {
   inventory: DailyInventory;
   movements: Movement[];
   category: InventoryCategory;
   canClose: boolean;
   canManageOpen: boolean;
+  allProducts: Product[];
 }) {
   const router = useRouter();
+
+  // Productos numéricos activos de la categoría, en el orden establecido
+  // (categoría → nombre). Incluye productos creados DESPUÉS de abrir la jornada,
+  // que aún no son ítems: por eso el diálogo de conteo inicial se arma desde aquí
+  // y no desde inventory.items.
+  const numericCategoryProducts = useMemo(
+    () => allProducts.filter((p) => !productIsBottle(p)),
+    [allProducts]
+  );
+  const itemProductIds = useMemo(
+    () => new Set(inventory.items.map((i) => i.productId)),
+    [inventory.items]
+  );
 
   // ── Descartar jornada abierta (PROPRIETARY/SUPERADMIN) ────────────────────
   const [discardDialog, setDiscardDialog] = useState(false);
@@ -827,11 +876,17 @@ function OpenView({
   const [savingInitial, setSavingInitial] = useState(false);
 
   function openEditInitial() {
+    const initialByProduct = new Map(
+      inventory.items.filter((i) => !productIsBottle(i.product)).map((i) => [i.productId, i.initialCount])
+    );
     setEditInitialCounts(
       Object.fromEntries(
-        inventory.items
-          .filter((i) => !productIsBottle(i.product))
-          .map((i) => [i.productId, String(i.initialCount)])
+        numericCategoryProducts.map((p) => {
+          // Producto ya en la jornada → su conteo inicial; producto nuevo → su
+          // stock actual como valor de partida editable.
+          const existing = initialByProduct.get(p.id);
+          return [p.id, String(existing ?? p.currentStock)];
+        })
       )
     );
     setEditInitialDialog(true);
@@ -918,6 +973,16 @@ function OpenView({
         .map((i) => [i.productId, i.reserveBottles ?? i.product.reserveBottles ?? 0])
     )
   );
+  // Indicador shots/copeo — solo Licores y Vinos (ítems numéricos, no botella).
+  // Precedencia: valor del ítem (fijado al abrir o en un cierre previo) y si no,
+  // el valor actual del producto.
+  const [shotsCopeoFlags, setShotsCopeoFlags] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(
+      inventory.items
+        .filter((i) => isShotsCopeoTrackedSlug(i.product.category?.slug))
+        .map((i) => [i.productId, i.shotsCopeo ?? i.product.shotsCopeo ?? false])
+    )
+  );
 
   function keepSameBottles() {
     const nextLevels: Record<string, BottleLevel> = {};
@@ -996,6 +1061,7 @@ function OpenView({
       entryTime:   r.effEntry > 0 ? (entryTimes[r.item.productId]?.trim() || null) : null,
       bottleLevel: null,
       reserveBottles: null,
+      shotsCopeo: isShotsCopeoTrackedSlug(r.item.product.category?.slug) ? (shotsCopeoFlags[r.item.productId] ?? false) : undefined,
     }));
     const bottles: CloseItem[] = bottleItems.map((i) => ({
       productId: i.productId,
@@ -1152,7 +1218,15 @@ function OpenView({
                 className={`rounded-xl border p-4 ${finalIsEmpty ? "border-red-200 bg-red-50/30" : "border-slate-200 bg-white"}`}
               >
                 <div className="flex items-center justify-between gap-2 mb-3">
-                  <span className="font-medium text-slate-800">{r.item.product.name}</span>
+                  <span className="font-medium text-slate-800 flex items-center gap-1.5 min-w-0">
+                    <span className="truncate">{r.item.product.name}</span>
+                    {isShotsCopeoTrackedSlug(r.item.product.category?.slug) && (
+                      <ShotsCopeoToggle
+                        value={shotsCopeoFlags[r.item.productId] ?? false}
+                        onChange={(v) => setShotsCopeoFlags((prev) => ({ ...prev, [r.item.productId]: v }))}
+                      />
+                    )}
+                  </span>
                   <span className="text-xs text-slate-400 shrink-0">{unit}</span>
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mb-3">
@@ -1258,7 +1332,17 @@ function OpenView({
                 return (
                   <Fragment key={r.item.id}>
                     <tr className={finalIsEmpty ? "bg-red-50/30" : "hover:bg-slate-50"}>
-                    <td className="px-4 py-2.5 font-medium text-slate-800">{r.item.product.name}</td>
+                    <td className="px-4 py-2.5 font-medium text-slate-800">
+                      <div className="flex items-center gap-1.5">
+                        <span>{r.item.product.name}</span>
+                        {isShotsCopeoTrackedSlug(r.item.product.category?.slug) && (
+                          <ShotsCopeoToggle
+                            value={shotsCopeoFlags[r.item.productId] ?? false}
+                            onChange={(v) => setShotsCopeoFlags((prev) => ({ ...prev, [r.item.productId]: v }))}
+                          />
+                        )}
+                      </div>
+                    </td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-slate-600">
                       {formatStock(r.item.initialCount, r.item.product.unit)}
                     </td>
@@ -1429,26 +1513,35 @@ function OpenView({
               Editar conteo inicial
             </DialogTitle>
             <DialogDescription>
-              Corrige el conteo inicial registrado al abrir la jornada. El stock del sistema se
-              reconcilia automáticamente con el nuevo valor, preservando los movimientos ya ocurridos hoy.
+              Corrige el conteo inicial de la jornada. Los productos <strong>nuevos</strong> creados
+              después de abrirla aparecen aquí para incluirlos en el conteo. El stock se reconcilia
+              automáticamente, preservando los movimientos ya ocurridos hoy.
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-[50vh] overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-md">
-            {numericItems.map((i) => (
-              <div key={i.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
-                <span className="text-sm font-medium text-slate-800">{i.product.name}</span>
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  className="w-28 text-right tabular-nums"
-                  value={editInitialCounts[i.productId] ?? ""}
-                  onChange={(e) =>
-                    setEditInitialCounts((prev) => ({ ...prev, [i.productId]: sanitizeNumericInput(e.target.value) }))
-                  }
-                  disabled={savingInitial}
-                />
-              </div>
-            ))}
+            {numericCategoryProducts.map((p) => {
+              const isNew = !itemProductIds.has(p.id);
+              return (
+                <div key={p.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                  <span className="text-sm font-medium text-slate-800 flex items-center gap-2 min-w-0">
+                    <span className="truncate">{p.name}</span>
+                    {isNew && (
+                      <Badge className="bg-blue-100 text-blue-700 border-0 text-[10px] shrink-0">Nuevo</Badge>
+                    )}
+                  </span>
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    className="w-28 text-right tabular-nums shrink-0"
+                    value={editInitialCounts[p.id] ?? ""}
+                    onChange={(e) =>
+                      setEditInitialCounts((prev) => ({ ...prev, [p.id]: sanitizeNumericInput(e.target.value) }))
+                    }
+                    disabled={savingInitial}
+                  />
+                </div>
+              );
+            })}
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setEditInitialDialog(false)} disabled={savingInitial}>
@@ -1572,7 +1665,10 @@ function ClosedView({
           return (
             <div key={r.item.id} className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="font-medium text-slate-800">{r.item.product.name}</span>
+                <span className="font-medium text-slate-800 flex items-center gap-1.5 min-w-0">
+                  <span className="truncate">{r.item.product.name}</span>
+                  <ShotsCopeoBadge active={!!r.item.shotsCopeo} />
+                </span>
                 <span className="text-sm font-semibold text-slate-800 tabular-nums">
                   {formatStock(r.finalCount, unit)}
                 </span>
@@ -1611,7 +1707,12 @@ function ClosedView({
             {rows.map((r) => {
               return (
                 <tr key={r.item.id}>
-                  <td className="px-4 py-3 font-medium text-slate-800">{r.item.product.name}</td>
+                  <td className="px-4 py-3 font-medium text-slate-800">
+                    <div className="flex items-center gap-1.5">
+                      <span>{r.item.product.name}</span>
+                      <ShotsCopeoBadge active={!!r.item.shotsCopeo} />
+                    </div>
+                  </td>
                   <td className="px-3 py-3 text-right tabular-nums text-slate-500">
                     {formatStock(r.item.initialCount, r.item.product.unit)}
                   </td>
@@ -1775,7 +1876,7 @@ export function DailyInventoryClient({
           </div>
         )
       ) : existing.status === "open" ? (
-        <OpenView inventory={existing} movements={movements} category={category} canClose={canClose} canManageOpen={canManageOpen} />
+        <OpenView inventory={existing} movements={movements} category={category} canClose={canClose} canManageOpen={canManageOpen} allProducts={allProducts} />
       ) : (
         <ClosedView inventory={existing} movements={movements} canReopen={canReopen} />
       )}

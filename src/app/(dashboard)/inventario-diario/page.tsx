@@ -114,7 +114,7 @@ export default async function InventarioDiarioPage({
     where: { date_categoryId: { date, categoryId: category.id } },
     include: {
       items: {
-        include: { product: { select: { id: true, name: true, unit: true, currentStock: true, bottleLevel: true, reserveBottles: true, category: { select: { slug: true, sortOrder: true } } } } },
+        include: { product: { select: { id: true, name: true, unit: true, currentStock: true, bottleLevel: true, reserveBottles: true, shotsCopeo: true, category: { select: { slug: true, sortOrder: true } } } } },
         orderBy: [{ product: { category: { sortOrder: "asc" } } }, { product: { name: "asc" } }],
       },
     },

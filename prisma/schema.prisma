@@ -42,6 +42,9 @@ model Product {
   reserveBottles   Int?
   // Umbral de alerta de compra; null = "almost_empty" por defecto.
   alertBottleLevel String?
+  // Indicador de que la botella está para shots/copeo (solo subcategorías
+  // Licores y Vinos — ver SHOTS_COPEO_SLUGS). No aplica al resto de productos.
+  shotsCopeo   Boolean              @default(false)
   active       Boolean              @default(true)
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
@@ -133,6 +136,8 @@ model DailyInventoryItem {
   // Snapshot del control por botella al cierre de la jornada (solo ítems de cócteles).
   bottleLevel      String?
   reserveBottles   Int?
+  // Snapshot del indicador shots/copeo al cierre de la jornada (Licores/Vinos).
+  shotsCopeo       Boolean        @default(false)
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
