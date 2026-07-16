@@ -1,6 +1,8 @@
 // src/lib/permissions.ts
 // Enforcing granular basado en los permisos que envía Nómina Xpress en el JWT.
 
+import { config } from "@/lib/config";
+
 type SessionUser = {
   role: string;
   inventoryAccess: boolean;
@@ -123,18 +125,25 @@ export function dailyCategoryKeys(slug: string): string[] {
 /**
  * ¿Puede el usuario realizar `action` sobre el inventario diario de la categoría `slug`?
  *
- * Orden de evaluación:
- *  1. Clave granular por categoría (fuente real cuando Nómina ya la emite).
- *  2. Fallback a la clave GLOBAL equivalente de esa acción (`can()`, que ya
- *     refleja overrides individuales y roles personalizados resueltos en
- *     `inventoryPermissions`). "edit" = reabrir, exige DAILY_REOPEN explícito
- *     — un usuario con solo STOCK_COUNT (p.ej. EMPLOYEE) no puede reabrir.
- *     "history" no tiene clave global equivalente hoy: solo se concede por
- *     clave granular por categoría.
+ * MODO INTEGRADO (Nómina emite `inventoryPermissions`): la fuente de verdad es
+ * **siempre** la clave por categoría. No hay fallback a claves globales — en
+ * particular `inventory:stock:count`, que Nómina incluye en el JWT de cualquier
+ * empleado con acceso al inventario, NO concede ninguna categoría (antes las
+ * concedía todas). `stock:count` solo habilita la pantalla de Movimientos.
+ *
+ * MODO STANDALONE (sin Nómina): no existen claves por categoría en el catálogo
+ * local, así que se concede por rol/claves globales, como hasta ahora:
+ * PROPRIETARY/SUPERADMIN/ADMIN operan todas las categorías y EMPLOYEE conserva
+ * abrir/cerrar. "edit" = reabrir, exige DAILY_REOPEN explícito.
  */
 export function canDailyCategory(user: SessionUser | null | undefined, slug: string, action: DailyAction): boolean {
   if (!user) return false;
   if (can(user, dailyCategoryKey(slug, action))) return true;
+
+  // Integrado: sin fallback. Falta la clave por categoría → denegado.
+  if (config.authMode !== "standalone") return false;
+
+  if (isAdminRole(user)) return true;
 
   switch (action) {
     case "view":  return can(user, INV.VIEW);

@@ -1,6 +1,6 @@
-# Inventario Restaurante
+# Inventory Xpress
 
-Sistema web de gestión de inventario para restaurante. Controla stock de barra y cocina, registra movimientos, genera alertas y reportes. Funciona en modo standalone (auth propia) o integrado con Nomina Xpress (JWT compartido).
+Sistema web de gestión de inventario para cualquier negocio que maneje insumos o productos (tiendas, bodegas, farmacias, bares, restaurantes, etc.). Organiza productos en categorías configurables, registra movimientos, genera alertas y reportes. Funciona en modo standalone (auth propia) o integrado con Nomina Xpress (JWT compartido). Incluye un módulo opcional de control por nivel de botella (flag `cocktails`) para productos embotellados como licores.
 
 ## Comandos
 
@@ -59,13 +59,38 @@ AUTH_MODE=integrated  → Sin login, valida JWT de cookie de Nomina Xpress
 
 ### Permisos
 
+El enforcement es **granular por acción**. Todos los helpers viven en
+`src/lib/permissions.ts` y reciben el objeto `session.user` (no el `role` suelto),
+porque el permiso se resuelve desde `inventoryPermissions` (arreglo de claves).
+
 ```typescript
-canManageProducts(role)          // solo SUPERADMIN — crear/editar/eliminar productos y categorías
-canDoStockCount(role, access)    // SUPERADMIN o inventoryAccess=true — registrar movimientos
-canManageUsers(role)             // solo SUPERADMIN — gestión de usuarios (standalone)
+// 12 claves globales (objeto INV); cada una tiene su helper:
+canCreateProducts(user)       // inventory:products:create
+canEditProducts(user)         // inventory:products:edit
+canDeleteProducts(user)       // inventory:products:delete       (activar/desactivar)
+canHardDeleteProducts(user)   // inventory:products:hard_delete  (borrado permanente sin historial)
+canManageCategories(user)     // inventory:categories:manage
+canDoStockCount(user)         // inventory:stock:count           (movimientos e inventario diario)
+canAdjustStock(user)          // inventory:stock:adjust          (movimientos tipo ADJUSTMENT)
+canReopenDailyInventory(user) // inventory:daily:reopen
+canViewReports(user)          // inventory:reports:view
+canViewAudit(user)            // inventory:audit:view
+canManageUsers(user)          // inventory:users:manage          (solo standalone)
+canAccessInventory(user)      // gate del middleware             (inventory:view)
+
+// Permisos por categoría de inventario diario (derivados del slug de la raíz):
+canDailyCategory(user, slug, action)   // action: view | open | close | edit | history
 ```
 
-Verificar permisos al inicio de cada API route antes de acceder a la DB.
+En **modo integrado** la clave por categoría es la única fuente de verdad: no hay
+fallback a claves globales (`inventory:stock:count` habilita Movimientos, nunca
+concede categorías del inventario diario). En **standalone** —donde el catálogo
+local no tiene claves por categoría— se concede por rol/clave global.
+
+Verificar permisos al inicio de cada API route antes de acceder a la DB. En modo
+standalone los permisos efectivos se resuelven en `src/lib/roles.ts`
+(`resolveUserPermissions`: rol base ∪ rol personalizado ∪ grant − revoke); en modo
+integrated llegan firmados en el JWT de Nómina Xpress.
 
 ## Sistema de Diseño
 
