@@ -7,7 +7,7 @@
 ## Contexto
 
 - Nómina sigue siendo la **fuente de verdad** de los permisos: emite `inventoryPermissions`
-  en el JWT (ver `GUIA_PERMISOS_GRANULARES.md`).
+  en el JWT (ver [`GUIA_PERMISOS_GRANULARES.md`](GUIA_PERMISOS_GRANULARES.md)).
 - El inventario diario se controla por **categoría raíz**. Cada categoría raíz tiene
   5 claves de permiso derivadas de su `slug`:
 
@@ -21,7 +21,8 @@
 
 - **Solo las categorías RAÍZ tienen claves.** Las subcategorías heredan: el permiso
   de la raíz (p. ej. `barra`) cubre todas sus subcategorías (Licores, Cócteles, etc.).
-- Las 10 claves globales del módulo no cambian (`inventory:view`, `inventory:products:*`, etc.).
+- Las 12 claves globales del módulo no cambian (`inventory:view`, `inventory:products:*`,
+  `inventory:audit:view`, etc.).
 
 ## Lo que el inventario ya ofrece (dos vías)
 

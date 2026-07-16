@@ -77,7 +77,7 @@ el modelo multi-cliente hay que consolidarla una sola vez.
 
 ## Flujo de release normal
 
-Regla de oro: **ningún bug llega a un restaurante en producción sin pasar antes por demo.**
+Regla de oro: **ningún bug llega a un cliente en producción sin pasar antes por demo.**
 
 ```
 feature branch → PR → merge a main → auto-deploy SOLO a demo → verificar en demo → promover a clientes reales
