@@ -1,5 +1,15 @@
 # Guía: Permisos granulares de inventario (cambios en este proyecto)
 
+> ⚠️ **Documento histórico (implementado).** Esta guía describe la migración que
+> ya se aplicó al inventario para leer permisos granulares del JWT de Nómina. Los
+> pasos de código, tablas de call sites y checklists son un registro de cómo se
+> hizo; **no** son la referencia vigente. La descripción autoritativa y actualizada
+> de roles y permisos está en
+> [`DOCUMENTACION_COMPLETA_DEL_PROYECTO.md`](../DOCUMENTACION_COMPLETA_DEL_PROYECTO.md)
+> (§ Roles, permisos y restricciones). El contrato real hoy tiene **12 claves
+> globales** (esta guía menciona 10: faltan `inventory:products:hard_delete` e
+> `inventory:audit:view`, añadidas después).
+
 > **Contexto:** Nómina Xpress (proyecto `restaurant-nomina`) ya fue actualizado. Ahora
 > emite en el JWT un arreglo `inventoryPermissions: string[]` con permisos granulares
 > por acción, además de `inventoryAccess: boolean`. Este proyecto (inventario) debe
@@ -36,18 +46,22 @@ interface NominaJWTPayload {
 | EMPLOYEE sin toggle | `false` | `[]` |
 | Rol personalizado | depende | el subconjunto que el admin le asignó |
 
-**Las 10 claves de permiso (contrato fijo):**
+**Las claves de permiso globales (contrato fijo).** Nota: esta guía se escribió con
+10 claves; el contrato vigente son **12** (se añadieron `inventory:products:hard_delete`
+e `inventory:audit:view`):
 
 ```
 inventory:view                 → acceder al inventario (gate de entrada)
 inventory:products:create      → crear productos
 inventory:products:edit        → editar productos
-inventory:products:delete      → eliminar/desactivar productos
+inventory:products:delete      → activar/desactivar productos
+inventory:products:hard_delete → borrado permanente de productos sin historial   (añadida)
 inventory:categories:manage    → crear/editar categorías
 inventory:stock:count          → registrar movimientos / inventario diario
 inventory:stock:adjust         → ajustes manuales de stock (tipo ADJUSTMENT)
 inventory:daily:reopen         → reabrir inventario diario cerrado
 inventory:reports:view         → ver reportes de inventario
+inventory:audit:view           → ver el módulo de auditoría                       (añadida)
 inventory:users:manage         → gestionar usuarios del inventario (modo standalone)
 ```
 
