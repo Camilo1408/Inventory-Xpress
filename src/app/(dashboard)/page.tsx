@@ -7,13 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { formatDate, formatStock, getStockStatus } from "@/lib/utils";
 import { needsRestock, isBottleLevel, isBottleTrackedSlug } from "@/lib/bottle";
 import { getNumericAlertProducts } from "@/lib/alert-data";
+import { businessToday, businessDayStart } from "@/lib/dates";
 
 export default async function DashboardPage() {
   const session = await auth();
   if (!session) redirect("/login");
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // Inicio del día operativo en la zona del negocio (el servidor corre en UTC).
+  const today = businessDayStart(businessToday());
 
   const [
     totalProducts,
