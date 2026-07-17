@@ -53,7 +53,7 @@ interface Product {
 interface InventoryItem {
   id: string;
   productId: string;
-  product: { id: string; name: string; unit: string; currentStock: number; bottleLevel?: string | null; reserveBottles?: number | null; shotsCopeo?: boolean; category?: { slug: string | null } | null };
+  product: { id: string; name: string; unit: string; currentStock: number; bottleLevel?: string | null; reserveBottles?: number | null; shotsCopeo?: boolean; category?: { name: string; slug: string | null } | null };
   initialCount: number;
   finalCount: number | null;
   unregisteredEntry: number | null;
@@ -140,6 +140,23 @@ function parseField(value: string | undefined): number | null {
 /** ¿El producto/item se controla por nivel de botella (subcategoría Cócteles)? */
 function productIsBottle(p: { category?: { slug: string | null } | null }): boolean {
   return isBottleTrackedSlug(p.category?.slug ?? null);
+}
+
+/** Nombre de categoría para agrupar tarjetas, con fallback para productos sin categoría. */
+function categoryName(p: { category?: { name: string } | null }): string {
+  return p.category?.name ?? "Sin categoría";
+}
+
+/** Agrupa una lista en tarjetas por categoría preservando el orden de entrada
+ *  (las listas ya llegan ordenadas por categoría → nombre desde el servidor). */
+function groupByCategory<T>(list: T[], getCategory: (item: T) => string): [string, T[]][] {
+  const map = new Map<string, T[]>();
+  for (const item of list) {
+    const cat = getCategory(item);
+    if (!map.has(cat)) map.set(cat, []);
+    map.get(cat)!.push(item);
+  }
+  return Array.from(map.entries());
 }
 
 // ─── HistoryPanel ─────────────────────────────────────────────────────────────
@@ -1049,6 +1066,19 @@ function OpenView({
     [numericItems, movements, finalCounts, unregEntries, unregExits]
   );
 
+  // Categorías en el mismo orden del conteo inicial (categoría → nombre), cada
+  // una como su propia tarjeta — igual que en la vista de apertura.
+  const categoryCards = useMemo(() => {
+    const rowsByProduct = new Map(rows.map((r) => [r.item.productId, r]));
+    const bottleByProduct = new Map(bottleItems.map((i) => [i.productId, i]));
+    return groupByCategory(inventory.items, (i) => categoryName(i.product)).map(([name, items]) => ({
+      name,
+      isBottle: productIsBottle(items[0].product),
+      rows: items.map((i) => rowsByProduct.get(i.productId)).filter((r): r is (typeof rows)[number] => !!r),
+      bottleItems: items.map((i) => bottleByProduct.get(i.productId)).filter((i): i is (typeof bottleItems)[number] => !!i),
+    }));
+  }, [inventory.items, rows, bottleItems]);
+
   function buildItems(): CloseItem[] {
     const numeric: CloseItem[] = rows.map((r) => ({
       productId: r.item.productId,
@@ -1153,16 +1183,16 @@ function OpenView({
       )}
 
       <form onSubmit={handleClose} className="space-y-4">
-        {bottleItems.length > 0 && (
-          <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        {categoryCards.map((cat) => cat.isBottle ? (
+          <div key={cat.name} className="bg-white border border-slate-200 rounded-lg overflow-hidden">
             <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Cócteles · nivel de botella</span>
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{cat.name} · nivel de botella</span>
               <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={keepSameBottles}>
                 <RefreshCw className="w-3 h-3 mr-1" /> Mantener igual
               </Button>
             </div>
             <div className="divide-y divide-slate-100">
-              {bottleItems.map((i) => (
+              {cat.bottleItems.map((i) => (
                 <div key={i.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
                   <span className="font-medium text-slate-800 text-sm">{i.product.name}</span>
                   <div className="flex flex-wrap items-center gap-4">
@@ -1202,12 +1232,15 @@ function OpenView({
               ))}
             </div>
           </div>
-        )}
+        ) : (
+        <div key={cat.name} className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+          <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{cat.name}</span>
+          </div>
 
-        {/* Móvil: una tarjeta por producto (evita la tabla de 8 columnas con scroll) */}
-        {numericItems.length > 0 && (
-        <div className="lg:hidden space-y-3">
-          {rows.map((r) => {
+          {/* Móvil: una tarjeta por producto (evita la tabla de 8 columnas con scroll) */}
+          <div className="lg:hidden p-3 space-y-3">
+          {cat.rows.map((r) => {
             const finalIsEmpty = r.finalStr.trim() === "" || r.finalStr === "0";
             const unit = r.item.product.unit;
             return (
@@ -1302,12 +1335,10 @@ function OpenView({
               </div>
             );
           })}
-        </div>
-        )}
+          </div>
 
-        {/* Escritorio: tabla completa */}
-        {numericItems.length > 0 && (
-        <div className="hidden lg:block bg-white border border-slate-200 rounded-lg overflow-x-auto">
+          {/* Escritorio: tabla completa */}
+          <div className="hidden lg:block overflow-x-auto">
           <table className="w-full text-sm min-w-[1100px]">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
@@ -1322,7 +1353,7 @@ function OpenView({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.map((r) => {
+              {cat.rows.map((r) => {
                 const finalIsEmpty = r.finalStr.trim() === "" || r.finalStr === "0";
                 return (
                   <Fragment key={r.item.id}>
@@ -1415,8 +1446,9 @@ function OpenView({
               })}
             </tbody>
           </table>
+          </div>
         </div>
-        )}
+        ))}
 
         {numericItems.length > 0 && (
         <p className="text-xs text-slate-500">
@@ -1601,6 +1633,17 @@ function ClosedView({
 
   const hasUnregistered  = rows.some((r) => r.unregEntry > 0 || r.unregExit > 0);
 
+  // Categorías en el mismo orden del conteo (categoría → nombre), cada una
+  // como su propia tarjeta — igual que en las vistas de apertura y cierre.
+  const rowsByProduct = new Map(rows.map((r) => [r.item.productId, r]));
+  const bottleByProduct = new Map(bottleItems.map((i) => [i.productId, i]));
+  const categoryCards = groupByCategory(inventory.items, (i) => categoryName(i.product)).map(([name, items]) => ({
+    name,
+    isBottle: productIsBottle(items[0].product),
+    rows: items.map((i) => rowsByProduct.get(i.productId)).filter((r): r is (typeof rows)[number] => !!r),
+    bottleItems: items.map((i) => bottleByProduct.get(i.productId)).filter((i): i is (typeof bottleItems)[number] => !!i),
+  }));
+
   return (
     <div className="space-y-6">
       <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 flex items-start justify-between gap-3">
@@ -1629,13 +1672,13 @@ function ClosedView({
         )}
       </div>
 
-      {bottleItems.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      {categoryCards.map((cat) => cat.isBottle ? (
+        <div key={cat.name} className="bg-white border border-slate-200 rounded-lg overflow-hidden">
           <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Cócteles · nivel de botella</span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{cat.name} · nivel de botella</span>
           </div>
           <div className="divide-y divide-slate-100">
-            {bottleItems.map((i) => (
+            {cat.bottleItems.map((i) => (
               <div key={i.id} className="px-4 py-3 flex items-center justify-between gap-3">
                 <span className="font-medium text-slate-800 text-sm">{i.product.name}</span>
                 <div className="flex items-center gap-3">
@@ -1646,12 +1689,15 @@ function ClosedView({
             ))}
           </div>
         </div>
-      )}
+      ) : (
+      <div key={cat.name} className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200">
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{cat.name}</span>
+        </div>
 
-      {/* Móvil: tarjeta de resultados por producto */}
-      {numericItems.length > 0 && (
-      <div className="lg:hidden space-y-3">
-        {rows.map((r) => {
+        {/* Móvil: tarjeta de resultados por producto */}
+        <div className="lg:hidden p-3 space-y-3">
+        {cat.rows.map((r) => {
           const unit = r.item.product.unit;
           return (
             <div key={r.item.id} className="rounded-xl border border-slate-200 bg-white p-4">
@@ -1675,12 +1721,10 @@ function ClosedView({
             </div>
           );
         })}
-      </div>
-      )}
+        </div>
 
-      {/* Escritorio: tabla de resultados */}
-      {numericItems.length > 0 && (
-      <div className="hidden lg:block bg-white border border-slate-200 rounded-lg overflow-x-auto">
+        {/* Escritorio: tabla de resultados */}
+        <div className="hidden lg:block overflow-x-auto">
         <table className="w-full text-sm min-w-[860px]">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
@@ -1695,7 +1739,7 @@ function ClosedView({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows.map((r) => {
+            {cat.rows.map((r) => {
               return (
                 <tr key={r.item.id}>
                   <td className="px-4 py-3 font-medium text-slate-800">
@@ -1730,9 +1774,9 @@ function ClosedView({
             })}
           </tbody>
         </table>
+        </div>
       </div>
-      )}
-
+      ))}
 
       <Dialog
         open={dialogOpen}
