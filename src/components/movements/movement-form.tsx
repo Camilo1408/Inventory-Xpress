@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { ChevronDown, Search, X, Ban } from "lucide-react";
 import { isBottleTrackedSlug, isBottleLevel, bottleStock, emptyOpenBottle, type BottleLevel } from "@/lib/bottle";
 import { BottleLevelSelector, BottleLevelBadge, ReserveCounter } from "@/components/inventario/bottle-level-selector";
-import { sanitizeNumericInput, parseNumericValue } from "@/lib/numeric";
+import { sanitizeNumericInput, parseNumericValue, numericFieldProps } from "@/lib/numeric";
 
 interface Product {
   id: string;
@@ -193,6 +193,10 @@ export function MovementForm({ products, canAdjust }: { products: Product[]; can
   const selectedProduct = products.find((p) => p.id === productId);
   const isBottle = isBottleTrackedSlug(selectedProduct?.category?.slug ?? null);
 
+  // Solo el ajuste admite cantidades negativas (descontar stock). Entrada y salida
+  // ya llevan el signo en el tipo: la API les aplica Math.abs.
+  const allowsNegative = !isBottle && numericType === "ADJUSTMENT";
+
   // Sincronizar estado de botella al cambiar producto. El setState-en-effect es
   // intencional: reinicia los campos del formulario cuando cambia el producto
   // seleccionado (efecto de sincronización con una prop externa).
@@ -364,7 +368,13 @@ export function MovementForm({ products, canAdjust }: { products: Product[]; can
               <button
                 key={t}
                 type="button"
-                onClick={() => setNumericType(t)}
+                onClick={() => {
+                  setNumericType(t);
+                  // Al salir de Ajuste, quitar el signo: Entrada/Salida lo ignoran
+                  // (la API les aplica Math.abs) y el campo mentiría sobre lo que
+                  // se va a registrar.
+                  if (t !== "ADJUSTMENT") setQuantity((q) => q.replace(/^-/, ""));
+                }}
                 className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors ${
                   numericType === t
                     ? t === "ENTRY"      ? "bg-blue-600 text-white border-blue-600"
@@ -431,10 +441,11 @@ export function MovementForm({ products, canAdjust }: { products: Product[]; can
           </Label>
           <Input
             id="quantity"
-            type="text"
-            inputMode="decimal"
+            {...numericFieldProps}
             value={quantity}
-            onChange={(e) => setQuantity(sanitizeNumericInput(e.target.value))}
+            onChange={(e) =>
+              setQuantity(sanitizeNumericInput(e.target.value, { allowNegative: allowsNegative }))
+            }
             placeholder="0"
             required
           />
