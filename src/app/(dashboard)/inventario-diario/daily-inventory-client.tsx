@@ -20,7 +20,7 @@ import {
 import { formatStock } from "@/lib/utils";
 import { BottleLevelSelector, ReserveCounter, BottleLevelBadge, ShotsCopeoToggle, ShotsCopeoBadge } from "@/components/inventario/bottle-level-selector";
 import { isBottleTrackedSlug, isBottleLevel, isShotsCopeoTrackedSlug, emptyOpenBottle, type BottleLevel } from "@/lib/bottle";
-import { sanitizeNumericInput, parseNumericValue } from "@/lib/numeric";
+import { sanitizeNumericInput, parseNumericValue, numericFieldProps } from "@/lib/numeric";
 import {
   ClipboardList,
   CheckCircle2,
@@ -590,8 +590,7 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
                           </p>
                         </div>
                         <Input
-                          type="text"
-                          inputMode="decimal"
+                          {...numericFieldProps}
                           className={`w-24 shrink-0 text-right tabular-nums ${isEmpty ? "border-red-300 focus-visible:ring-red-400" : ""}`}
                           value={counts[p.id] ?? ""}
                           onChange={(e) => setCounts((prev) => ({ ...prev, [p.id]: sanitizeNumericInput(e.target.value) }))}
@@ -632,8 +631,7 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
                           </td>
                           <td className="px-4 py-2.5 text-right">
                             <Input
-                              type="text"
-                              inputMode="decimal"
+                              {...numericFieldProps}
                               className={`w-28 ml-auto text-right tabular-nums ${isEmpty ? "border-red-300 focus-visible:ring-red-400" : ""}`}
                               value={counts[p.id] ?? ""}
                               onChange={(e) => setCounts((prev) => ({ ...prev, [p.id]: sanitizeNumericInput(e.target.value) }))}
@@ -1247,8 +1245,7 @@ function OpenView({
                   <div>
                     <label className="block text-xs font-medium text-emerald-700 mb-1">Entrada NR</label>
                     <Input
-                      type="text"
-                      inputMode="decimal"
+                      {...numericFieldProps}
                       className="w-full text-right tabular-nums"
                       value={r.entryStr}
                       onChange={(e) =>
@@ -1260,8 +1257,7 @@ function OpenView({
                   <div>
                     <label className="block text-xs font-medium text-red-600 mb-1">Salida NR</label>
                     <Input
-                      type="text"
-                      inputMode="decimal"
+                      {...numericFieldProps}
                       className="w-full text-right tabular-nums"
                       value={r.exitStr}
                       onChange={(e) =>
@@ -1274,8 +1270,7 @@ function OpenView({
                 <div className="mt-3">
                   <label className="block text-xs font-medium text-slate-800 mb-1">Conteo real *</label>
                   <Input
-                    type="text"
-                    inputMode="decimal"
+                    {...numericFieldProps}
                     className={`w-full text-right tabular-nums ${finalIsEmpty ? "border-red-300 focus-visible:ring-red-400" : ""}`}
                     value={r.finalStr}
                     onChange={(e) =>
@@ -1354,8 +1349,7 @@ function OpenView({
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       <Input
-                        type="text"
-                        inputMode="decimal"
+                        {...numericFieldProps}
                         className="w-24 ml-auto text-right tabular-nums"
                         value={r.entryStr}
                         onChange={(e) =>
@@ -1366,8 +1360,7 @@ function OpenView({
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       <Input
-                        type="text"
-                        inputMode="decimal"
+                        {...numericFieldProps}
                         className="w-24 ml-auto text-right tabular-nums"
                         value={r.exitStr}
                         onChange={(e) =>
@@ -1381,8 +1374,7 @@ function OpenView({
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       <Input
-                        type="text"
-                        inputMode="decimal"
+                        {...numericFieldProps}
                         className={`w-24 ml-auto text-right tabular-nums ${
                           finalIsEmpty ? "border-red-300 focus-visible:ring-red-400" : ""
                         }`}
@@ -1530,8 +1522,7 @@ function OpenView({
                     )}
                   </span>
                   <Input
-                    type="text"
-                    inputMode="decimal"
+                    {...numericFieldProps}
                     className="w-28 text-right tabular-nums shrink-0"
                     value={editInitialCounts[p.id] ?? ""}
                     onChange={(e) =>
