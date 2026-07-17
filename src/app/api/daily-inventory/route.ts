@@ -5,6 +5,7 @@ import { isBottleTrackedSlug, isBottleLevel, isShotsCopeoTrackedSlug } from "@/l
 import { audit } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/lib/config";
+import { businessToday, businessDayRange } from "@/lib/dates";
 
 interface CreateItem {
   productId: string;
@@ -53,7 +54,7 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const date = searchParams.get("date") ?? new Date().toISOString().slice(0, 10);
+  const date = searchParams.get("date") ?? businessToday();
   const categoryId = searchParams.get("categoryId");
   if (!categoryId) return NextResponse.json({ error: "categoryId es requerido" }, { status: 400 });
 
@@ -77,8 +78,7 @@ export async function GET(req: NextRequest) {
 
   if (!inventory) return NextResponse.json({ inventory: null });
 
-  const dayStart = new Date(`${date}T00:00:00.000Z`);
-  const dayEnd   = new Date(`${date}T23:59:59.999Z`);
+  const { start: dayStart, end: dayEnd } = businessDayRange(date);
 
   const movements = await prisma.stockMovement.findMany({
     where: {

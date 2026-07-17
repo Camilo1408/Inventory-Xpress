@@ -5,6 +5,7 @@ import { isBottleTrackedSlug, isBottleLevel, isShotsCopeoTrackedSlug, bottleStoc
 import { audit } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/lib/config";
+import { businessDayRange } from "@/lib/dates";
 
 interface FinalCountItem {
   productId: string;
@@ -297,8 +298,7 @@ export async function PATCH(
 
   // Movimientos registrados del día (solo manuales: source=null) — base para el "esperado".
   // Se excluyen los auto-generados por el inventario diario para no contarlos dos veces.
-  const dayStart0 = new Date(`${inventory.date}T00:00:00.000Z`);
-  const dayEnd0   = new Date(`${inventory.date}T23:59:59.999Z`);
+  const { start: dayStart0, end: dayEnd0 } = businessDayRange(inventory.date);
   const dayMovements = await prisma.stockMovement.findMany({
     where: {
       productId: { in: inventory.items.map((i) => i.productId) },
@@ -485,8 +485,7 @@ export async function PATCH(
     },
   });
 
-  const dayStart = new Date(`${inventory.date}T00:00:00.000Z`);
-  const dayEnd   = new Date(`${inventory.date}T23:59:59.999Z`);
+  const { start: dayStart, end: dayEnd } = businessDayRange(inventory.date);
 
   const movements = await prisma.stockMovement.findMany({
     where: {

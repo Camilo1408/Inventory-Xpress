@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { canViewDailyCategory, canDailyCategory, canManageOpenDaily } from "@/lib/permissions";
 import { DailyInventoryClient } from "./daily-inventory-client";
 import { config } from "@/lib/config";
+import { businessToday, businessDayRange } from "@/lib/dates";
 
 const STATUS_BADGE: Record<string, string> = {
   none:   "bg-slate-100 text-slate-500 border-0",
@@ -29,7 +30,7 @@ export default async function InventarioDiarioPage({
   if (!config.features.dailyInventory) redirect("/");
 
   const resolved = await searchParams;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessToday();
   const rawDate = resolved.date;
   const date = rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : today;
   const slug = resolved.categoria;
@@ -122,8 +123,7 @@ export default async function InventarioDiarioPage({
 
   let movements: { productId: string; type: string; quantity: number }[] = [];
   if (existing) {
-    const dayStart = new Date(`${date}T00:00:00.000Z`);
-    const dayEnd   = new Date(`${date}T23:59:59.999Z`);
+    const { start: dayStart, end: dayEnd } = businessDayRange(date);
     movements = await prisma.stockMovement.findMany({
       where: {
         productId: { in: existing.items.map((i) => i.productId) },

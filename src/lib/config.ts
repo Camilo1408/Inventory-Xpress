@@ -7,6 +7,10 @@ const authMode = process.env.AUTH_MODE === "standalone" ? "standalone" : "integr
 
 export const config = {
   authMode,
+  // Zona horaria del negocio: define cuándo empieza y termina la jornada operativa.
+  // El servidor corre en UTC; sin esto el día saltaría a las 19:00 hora de Colombia.
+  // Un cliente en otra zona la cambia con APP_TIMEZONE (IANA, ej. "America/Mexico_City").
+  timezone: process.env.APP_TIMEZONE?.trim() || "America/Bogota",
   brand: {
     name: process.env.NEXT_PUBLIC_BRAND_NAME ?? "Inventario",
     logoUrl: process.env.NEXT_PUBLIC_BRAND_LOGO ?? null,
