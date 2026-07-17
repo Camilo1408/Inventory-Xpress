@@ -425,6 +425,28 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
     toast.success("Niveles copiados del último registro");
   }
 
+  // Copia el cierre de ayer completo como conteo inicial de hoy: para productos
+  // numéricos, el stock del sistema (= conteo final de ayer, si no hubo
+  // movimientos desde entonces) pasa a ser el conteo inicial; para botellas,
+  // mismo comportamiento que keepSameBottles.
+  function keepSameAsYesterday() {
+    const nextCounts: Record<string, string> = {};
+    const nextLevels: Record<string, BottleLevel> = {};
+    const nextReserves: Record<string, number> = {};
+    for (const p of allProducts) {
+      if (productIsBottle(p)) {
+        if (isBottleLevel(p.bottleLevel)) nextLevels[p.id] = p.bottleLevel as BottleLevel;
+        nextReserves[p.id] = p.reserveBottles ?? 0;
+      } else {
+        nextCounts[p.id] = String(p.currentStock);
+      }
+    }
+    setCounts(nextCounts);
+    setLevels(nextLevels);
+    setReserves(nextReserves);
+    toast.success("Conteo inicial copiado del cierre de ayer");
+  }
+
   const byCategory = allProducts.reduce<Record<string, Product[]>>((acc, p) => {
     const cat = p.category?.name ?? "Sin categoría";
     if (!acc[cat]) acc[cat] = [];
@@ -520,14 +542,26 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
   return (
     <>
       <form onSubmit={handleStart} className="space-y-6">
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex gap-3">
-          <ClipboardList className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold text-blue-800">Conteo inicial del día</p>
-            <p className="text-xs text-blue-600 mt-0.5">
-              Registra las existencias físicas actuales. Los campos vacíos o en cero se registrarán como <strong>sin existencias (0 unidades)</strong>.
-            </p>
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex flex-col sm:flex-row sm:items-start gap-3 sm:justify-between">
+          <div className="flex gap-3">
+            <ClipboardList className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-blue-800">Conteo inicial del día</p>
+              <p className="text-xs text-blue-600 mt-0.5">
+                Registra las existencias físicas actuales. Los campos vacíos o en cero se registrarán como <strong>sin existencias (0 unidades)</strong>.
+              </p>
+            </div>
           </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="shrink-0 bg-white"
+            onClick={keepSameAsYesterday}
+          >
+            <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+            Mantener igual al cierre de ayer
+          </Button>
         </div>
 
         {Object.entries(byCategory).map(([cat, products]) => (
