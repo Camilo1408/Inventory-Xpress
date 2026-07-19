@@ -1305,7 +1305,7 @@ function OpenView({
                     {r.exits > 0 ? `−${formatStock(r.exits, unit)} sal.` : "sin salidas"}
                   </span>
                   <span className="text-slate-500">
-                    Esperado <strong className="text-slate-800 tabular-nums">{formatStock(r.calculated, unit)}</strong>
+                    Esperado <strong className="text-slate-800 tabular-nums">{formatStock(r.expected, unit)}</strong>
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -1435,7 +1435,7 @@ function OpenView({
                       />
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-slate-800">
-                      {formatStock(r.calculated, r.item.product.unit)}
+                      {formatStock(r.expected, r.item.product.unit)}
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       <Input
@@ -1750,7 +1750,7 @@ function ClosedView({
                 {r.exits > 0 && <span className="text-red-500 tabular-nums">−{formatStock(r.exits, unit)} sal.</span>}
                 {r.unregEntry > 0 && <span className="text-emerald-700 tabular-nums">+{formatStock(r.unregEntry, unit)} NR</span>}
                 {r.unregExit > 0 && <span className="text-red-600 tabular-nums">−{formatStock(r.unregExit, unit)} NR</span>}
-                <span>Esperado <strong className="text-slate-600 tabular-nums">{formatStock(r.calculated, unit)}</strong></span>
+                <span>Esperado <strong className="text-slate-600 tabular-nums">{formatStock(r.expected, unit)}</strong></span>
               </div>
             </div>
           );
@@ -1798,7 +1798,7 @@ function ClosedView({
                     {r.unregExit > 0 ? `−${formatStock(r.unregExit, r.item.product.unit)}` : "—"}
                   </td>
                   <td className="px-3 py-3 text-right tabular-nums text-slate-600">
-                    {formatStock(r.calculated, r.item.product.unit)}
+                    {formatStock(r.expected, r.item.product.unit)}
                   </td>
                   <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-800">
                     {formatStock(r.finalCount, r.item.product.unit)}
