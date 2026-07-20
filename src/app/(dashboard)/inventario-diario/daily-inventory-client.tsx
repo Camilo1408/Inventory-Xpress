@@ -627,17 +627,15 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
                         className={`px-4 py-3 flex items-center justify-between gap-3 ${isEmpty ? "bg-red-50/40" : ""}`}
                       >
                         <div className="min-w-0">
-                          <p className="font-medium text-slate-800 text-sm truncate flex items-center gap-1.5">
-                            <span className="truncate">{p.name}</span>
+                          <p className="font-medium text-slate-800 text-sm truncate">{p.name}</p>
+                          <p className="mt-0.5 text-xs text-slate-400 tabular-nums flex items-center gap-2">
                             {isShotsCopeoTrackedSlug(p.category?.slug) && (
                               <ShotsCopeoToggle
                                 value={shotsCopeoFlags[p.id] ?? false}
                                 onChange={(v) => setShotsCopeoFlags((prev) => ({ ...prev, [p.id]: v }))}
                               />
                             )}
-                          </p>
-                          <p className="text-xs text-slate-400 tabular-nums">
-                            Sistema: {formatStock(p.currentStock, p.unit)}
+                            <span>Sistema: {formatStock(p.currentStock, p.unit)}</span>
                           </p>
                         </div>
                         <Input
@@ -1282,17 +1280,17 @@ function OpenView({
                 key={r.item.id}
                 className={`rounded-xl border p-4 ${finalIsEmpty ? "border-red-200 bg-red-50/30" : "border-slate-200 bg-white"}`}
               >
-                <div className="flex items-center justify-between gap-2 mb-3">
-                  <span className="font-medium text-slate-800 flex items-center gap-1.5 min-w-0">
-                    <span className="truncate">{r.item.product.name}</span>
+                <div className="mb-3">
+                  <p className="font-medium text-slate-800 truncate">{r.item.product.name}</p>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
                     {isShotsCopeoTrackedSlug(r.item.product.category?.slug) && (
                       <ShotsCopeoToggle
                         value={shotsCopeoFlags[r.item.productId] ?? false}
                         onChange={(v) => setShotsCopeoFlags((prev) => ({ ...prev, [r.item.productId]: v }))}
                       />
                     )}
-                  </span>
-                  <span className="text-xs text-slate-400 shrink-0">{unit}</span>
+                    <span>{unit}</span>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mb-3">
                   <span className="text-slate-500">
@@ -1735,14 +1733,14 @@ function ClosedView({
           const unit = r.item.product.unit;
           return (
             <div key={r.item.id} className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="font-medium text-slate-800 flex items-center gap-1.5 min-w-0">
-                  <span className="truncate">{r.item.product.name}</span>
+              <div className="mb-2">
+                <p className="font-medium text-slate-800 truncate">{r.item.product.name}</p>
+                <div className="mt-1 flex items-center gap-2">
                   <ShotsCopeoBadge active={!!r.item.shotsCopeo} />
-                </span>
-                <span className="text-sm font-semibold text-slate-800 tabular-nums">
-                  {formatStock(r.finalCount, unit)}
-                </span>
+                  <span className="ml-auto text-sm font-semibold text-slate-800 tabular-nums">
+                    {formatStock(r.finalCount, unit)}
+                  </span>
+                </div>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
                 <span>Inicial <strong className="text-slate-600 tabular-nums">{formatStock(r.item.initialCount, unit)}</strong></span>
