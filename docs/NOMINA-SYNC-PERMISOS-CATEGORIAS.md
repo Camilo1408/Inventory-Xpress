@@ -102,3 +102,33 @@ Al registrar claves **nuevas de categoría** (`inventory:daily:<slug>:*`):
 - **Standalone:** en modo `standalone` el inventario ya concede acceso total por rol a
   PROPRIETARY/SUPERADMIN/ADMIN sin necesidad de este sync (solo aplica al modo integrado
   con Nómina).
+
+## Cambios recientes en el inventario (a tener en cuenta en Nómina)
+
+### 1. Roles admin ven las categorías nuevas SIN re-login (fallback por rol)
+
+El inventario ahora concede acceso a **todas** las categorías del inventario diario a
+los roles **PROPRIETARY, SUPERADMIN y ADMIN** por su rol (que ya viaja en el JWT), sin
+exigir la clave `inventory:daily:<slug>:*`. Efecto: al crear una categoría raíz, estos
+roles la ven/operan de inmediato en la siguiente navegación, **sin re-loguear**.
+
+Implicaciones para Nómina:
+- Seguir **auto-asignando** las claves nuevas a estos roles es **redundante pero
+  inofensivo** (idempotente); puede mantenerse para consistencia del catálogo.
+- Para **roles personalizados / EMPLOYEE** NO hay fallback: siguen dependiendo de la
+  clave `inventory:daily:<slug>:*` asignada en Nómina, y deben **re-loguear** para que
+  el JWT la incluya (sea que se asigne al crear la categoría o después).
+
+### 2. La clave `:edit` ("Reabrir/editar") amplió su alcance
+
+Antes, descartar/corregir el conteo inicial de una jornada **abierta** estaba reservado
+a PROPRIETARY/SUPERADMIN por rol. Ahora se gobierna por la clave **`:edit` de la
+categoría** — la misma de "Reabrir/editar". Es decir, quien tenga `inventory:daily:<slug>:edit`
+puede: reabrir una jornada cerrada, **descartar** una jornada abierta y **corregir su
+conteo inicial**.
+
+- **No es una clave nueva** ni cambia el contrato de sincronización: no hay que registrar
+  ni sincronizar nada extra.
+- **Sí conviene actualizar el copy en la UI de Roles de Nómina:** el texto de ayuda de
+  "Reabrir/editar" debería aclarar que también permite **descartar y editar el conteo
+  inicial de una jornada abierta**, para que quien asigne el permiso conozca el alcance.

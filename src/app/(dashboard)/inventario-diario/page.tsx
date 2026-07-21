@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ClipboardList, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { canViewDailyCategory, canDailyCategory, canManageOpenDaily } from "@/lib/permissions";
+import { canViewDailyCategory, canDailyCategory } from "@/lib/permissions";
 import { DailyInventoryClient } from "./daily-inventory-client";
 import { config } from "@/lib/config";
 import { businessToday, businessDayRange } from "@/lib/dates";
@@ -153,7 +153,7 @@ export default async function InventarioDiarioPage({
       canOpen={canDailyCategory(session.user, slug, "open")}
       canClose={canDailyCategory(session.user, slug, "close")}
       canReopen={canDailyCategory(session.user, slug, "edit")}
-      canManageOpen={canManageOpenDaily(session.user)}
+      canManageOpen={canDailyCategory(session.user, slug, "edit")}
       history={history}
     />
   );
