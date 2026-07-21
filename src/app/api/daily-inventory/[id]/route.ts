@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { canDailyCategory, canDoStockCount, canReopenDailyInventory, canManageOpenDaily, type DailyAction } from "@/lib/permissions";
+import { canDailyCategory, canDoStockCount, canReopenDailyInventory, type DailyAction } from "@/lib/permissions";
 import { isBottleTrackedSlug, isBottleLevel, isShotsCopeoTrackedSlug, bottleStock } from "@/lib/bottle";
 import { audit } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
@@ -30,7 +30,7 @@ interface PatchBody {
  *  body { finalCounts: [...] }                        → cerrar inventario (permiso :close de la categoría)
  *  body { action: "reopen" }                          → reabrir inventario (permiso :edit de la categoría)
  *  body { action: "editInitial", initialCounts: [...] } → corregir conteo inicial de una jornada ABIERTA
- *                                                         (solo PROPRIETARY/SUPERADMIN, ver canManageOpenDaily)
+ *                                                         (permiso :edit de la categoría, igual que reabrir)
  */
 export async function PATCH(
   req: NextRequest,
@@ -70,7 +70,7 @@ export async function PATCH(
 
   // ── Acción: corregir conteo inicial (jornada ABIERTA) ───────────────────────
   if (body.action === "editInitial") {
-    if (!canManageOpenDaily(session.user)) {
+    if (!allowed("edit")) {
       await audit({
         action: "access.denied", entityType: "DailyInventory", entityId: id,
         categoryId: meta.categoryId, categoryName, userId, userName,
@@ -516,7 +516,7 @@ export async function PATCH(
 }
 
 /** DELETE /api/daily-inventory/[id]
- *  Descarta una jornada ABIERTA (solo PROPRIETARY/SUPERADMIN, ver canManageOpenDaily).
+ *  Descarta una jornada ABIERTA (permiso :edit de la categoría, igual que reabrir).
  *  No aplica a jornadas cerradas: esas ya generaron movimientos de cierre y stock
  *  consolidado; para corregirlas se usa "reopen".
  *
@@ -532,11 +532,31 @@ export async function DELETE(
   if (!config.features.dailyInventory) {
     return NextResponse.json({ error: "Función no disponible" }, { status: 403 });
   }
-  if (!canManageOpenDaily(session.user)) {
+
+  const { id } = await params;
+
+  const inventory = await prisma.dailyInventory.findUnique({
+    where: { id },
+    include: { items: { select: { id: true, productId: true } } },
+  });
+  if (!inventory) return NextResponse.json({ error: "Inventario no encontrado" }, { status: 404 });
+
+  // Gate por categoría: descartar exige el permiso `:edit` (mismo que "Reabrir/editar").
+  // Registros legados (categoryId NULL) caen al gate global de reabrir.
+  let categorySlug: string | null = null;
+  let categoryName: string | null = null;
+  if (inventory.categoryId) {
+    const cat = await prisma.category.findUnique({ where: { id: inventory.categoryId }, select: { slug: true, name: true } });
+    categorySlug = cat?.slug ?? null;
+    categoryName = cat?.name ?? null;
+  }
+  const canDiscard = categorySlug
+    ? canDailyCategory(session.user, categorySlug, "edit")
+    : canReopenDailyInventory(session.user);
+  if (!canDiscard) {
     return NextResponse.json({ error: "Sin permiso para descartar esta jornada" }, { status: 403 });
   }
 
-  const { id } = await params;
   let reason = "";
   try {
     const body = await req.json() as { reason?: string };
@@ -548,19 +568,8 @@ export async function DELETE(
     return NextResponse.json({ error: "Debes ingresar una justificación para descartar la jornada" }, { status: 400 });
   }
 
-  const inventory = await prisma.dailyInventory.findUnique({
-    where: { id },
-    include: { items: { select: { id: true, productId: true } } },
-  });
-  if (!inventory) return NextResponse.json({ error: "Inventario no encontrado" }, { status: 404 });
   if (inventory.status !== "open") {
     return NextResponse.json({ error: "Solo se pueden descartar jornadas abiertas" }, { status: 409 });
-  }
-
-  let categoryName: string | null = null;
-  if (inventory.categoryId) {
-    const cat = await prisma.category.findUnique({ where: { id: inventory.categoryId }, select: { name: true } });
-    categoryName = cat?.name ?? null;
   }
 
   const userId   = session.user.id;

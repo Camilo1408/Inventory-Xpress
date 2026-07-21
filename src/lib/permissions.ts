@@ -140,10 +140,18 @@ export function canDailyCategory(user: SessionUser | null | undefined, slug: str
   if (!user) return false;
   if (can(user, dailyCategoryKey(slug, action))) return true;
 
-  // Integrado: sin fallback. Falta la clave por categoría → denegado.
-  if (config.authMode !== "standalone") return false;
-
+  // Fallback por ROL administrativo (PROPRIETARY/SUPERADMIN/ADMIN): estos roles
+  // operan cualquier categoría aun sin la clave por categoría en el JWT. Con esto
+  // una categoría raíz nueva es visible/operable de inmediato, SIN re-login: el rol
+  // ya viaja en el JWT y el listado de categorías se lee en vivo desde la DB. Es un
+  // fallback por rol —NO por clave global— así que no reintroduce el bug de
+  // `inventory:stock:count` (que todo empleado tiene) concediendo todas las categorías.
+  // Los usuarios no-admin siguen dependiendo de su clave por categoría, que se
+  // refresca al re-loguear.
   if (isAdminRole(user)) return true;
+
+  // Integrado: sin más fallback. Falta la clave por categoría → denegado.
+  if (config.authMode !== "standalone") return false;
 
   switch (action) {
     case "view":  return can(user, INV.VIEW);
@@ -165,12 +173,8 @@ export function isAdminRole(user: SessionUser): boolean {
   return ADMIN_ROLES.includes(user.role);
 }
 
-// Solo estos roles pueden descartar una jornada abierta o corregir su conteo
-// inicial. A propósito NO incluye ADMIN (a diferencia de `ADMIN_ROLES`): es una
-// acción destructiva/correctiva reservada a dueño y superadmin.
-const MANAGE_OPEN_DAILY_ROLES = ["PROPRIETARY", "SUPERADMIN"];
-
-/** ¿Puede descartar/editar el inicio de un inventario diario ABIERTO? */
-export function canManageOpenDaily(user: SessionUser | null | undefined): boolean {
-  return !!user && MANAGE_OPEN_DAILY_ROLES.includes(user.role);
-}
+// Descartar una jornada ABIERTA o corregir su conteo inicial se gobierna por el
+// permiso `:edit` de la categoría (mismo que "Reabrir/editar"), vía
+// `canEditDailyCategory` / `canDailyCategory(user, slug, "edit")`. Ya no hay un
+// gate por rol aparte: cualquiera con "Reabrir/editar" de la categoría (o un rol
+// admin, por el fallback de arriba) puede hacerlo.

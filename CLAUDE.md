@@ -82,10 +82,19 @@ canAccessInventory(user)      // gate del middleware             (inventory:view
 canDailyCategory(user, slug, action)   // action: view | open | close | edit | history
 ```
 
-En **modo integrado** la clave por categoría es la única fuente de verdad: no hay
-fallback a claves globales (`inventory:stock:count` habilita Movimientos, nunca
-concede categorías del inventario diario). En **standalone** —donde el catálogo
-local no tiene claves por categoría— se concede por rol/clave global.
+En **modo integrado** la clave por categoría es la fuente de verdad para los usuarios
+no-admin: no hay fallback a claves globales (`inventory:stock:count` habilita
+Movimientos, nunca concede categorías del inventario diario). **Excepción — roles
+admin:** PROPRIETARY/SUPERADMIN/ADMIN tienen fallback por **rol** (no por clave global),
+así que operan todas las categorías aun sin la clave por categoría en el JWT; con esto
+una categoría raíz nueva es visible/operable sin re-login (el listado se lee en vivo de
+la DB). En **standalone** —donde el catálogo local no tiene claves por categoría— se
+concede por rol/clave global.
+
+**Descartar/editar el conteo inicial de una jornada ABIERTA** se gobierna por la clave
+`:edit` de la categoría (misma que "Reabrir/editar"), vía `canDailyCategory(user, slug,
+"edit")` — no por un gate de rol aparte. Cualquiera con "Reabrir/editar" de la categoría
+(o un rol admin, por el fallback) puede reabrir, descartar y corregir el conteo inicial.
 
 Verificar permisos al inicio de cada API route antes de acceder a la DB. En modo
 standalone los permisos efectivos se resuelven en `src/lib/roles.ts`
