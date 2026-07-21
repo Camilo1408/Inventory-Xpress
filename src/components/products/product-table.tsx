@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Pencil, Package, Search, PowerOff, Power, Trash2 } from "lucide-react";
+import { Pencil, Package, Search, PowerOff, Power, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -58,23 +58,82 @@ type StatusFilter = "all" | "active" | "inactive";
 
 type ActionKind = "activate" | "deactivate" | "hardDelete";
 
+// Persistencia de búsqueda/filtros/paginación entre navegaciones (p. ej. al entrar
+// y salir de la vista de edición). Se guarda en sessionStorage: sobrevive mientras
+// la pestaña esté abierta y se restaura al volver a /productos por cualquier vía.
+const STORAGE_KEY = "productos:filtros";
+const PER_PAGE_OPTIONS = [10, 15, 20];
+const DEFAULT_PER_PAGE = 15;
+
+interface PersistedFilters {
+  search: string;
+  rootFilter: string;
+  subFilter: string;
+  statusFilter: StatusFilter;
+  page: number;
+  perPage: number;
+}
+
 export function ProductTable({ products, rootCategories, canManage, canHardDelete }: ProductTableProps) {
   const router = useRouter();
   const [rootFilter, setRootFilter]         = useState("all");
   const [subFilter, setSubFilter]           = useState("all");
   const [statusFilter, setStatusFilter]     = useState<StatusFilter>("all");
   const [search, setSearch]                 = useState("");
+  const [perPage, setPerPage]               = useState(DEFAULT_PER_PAGE);
+  const [page, setPage]                     = useState(1);
+  const [hydrated, setHydrated]             = useState(false);
   const [actionTarget, setActionTarget]     = useState<{ id: string; name: string; kind: ActionKind } | null>(null);
   const [processing, setProcessing]         = useState(false);
+
+  // Restaurar filtros al montar (una vez). Se hace en un effect —y no en lazy-init de
+  // useState— para no romper la hidratación: el servidor no tiene sessionStorage, así
+  // que renderiza los defaults y el cliente los ajusta tras montar. Los setState del
+  // bloque se agrupan en un solo re-render (batching), pero la regla de lint es
+  // conservadora, por eso se acota aquí. Usa los setters directos a propósito, para no
+  // disparar el reinicio de página de los handlers de cambio.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const p = JSON.parse(raw) as Partial<PersistedFilters>;
+        /* eslint-disable react-hooks/set-state-in-effect */
+        if (typeof p.search === "string") setSearch(p.search);
+        if (typeof p.rootFilter === "string") setRootFilter(p.rootFilter);
+        if (typeof p.subFilter === "string") setSubFilter(p.subFilter);
+        if (p.statusFilter === "all" || p.statusFilter === "active" || p.statusFilter === "inactive") setStatusFilter(p.statusFilter);
+        if (typeof p.perPage === "number" && PER_PAGE_OPTIONS.includes(p.perPage)) setPerPage(p.perPage);
+        if (typeof p.page === "number" && p.page >= 1) setPage(p.page);
+        /* eslint-enable react-hooks/set-state-in-effect */
+      }
+    } catch {
+      // sessionStorage no disponible o JSON corrupto: se ignora, se usan defaults.
+    }
+    setHydrated(true);
+  }, []);
+
+  // Persistir tras la hidratación (evita sobrescribir con defaults antes de restaurar).
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      sessionStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ search, rootFilter, subFilter, statusFilter, page, perPage } satisfies PersistedFilters)
+      );
+    } catch {
+      // best-effort
+    }
+  }, [hydrated, search, rootFilter, subFilter, statusFilter, page, perPage]);
 
   // Subcategorías de la raíz seleccionada (para el segundo select en cascada).
   const selectedRoot = rootCategories.find((r) => r.id === rootFilter);
   const subOptions = selectedRoot?.children ?? [];
 
-  // Al cambiar la raíz, reiniciar la subcategoría.
+  // Al cambiar la raíz, reiniciar la subcategoría (y volver a la primera página).
   function handleRootChange(value: string) {
     setRootFilter(value);
     setSubFilter("all");
+    setPage(1);
   }
 
   const filtered = products.filter((p) => {
@@ -90,6 +149,13 @@ export function ProductTable({ products, rootCategories, canManage, canHardDelet
       (p.category?.name ?? "").toLowerCase().includes(search.trim().toLowerCase());
     return matchesRoot && matchesSub && matchesStatus && matchesSearch;
   });
+
+  // Paginación (cliente). currentPage se acota por si el filtrado redujo el total.
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  const currentPage = Math.min(page, totalPages);
+  const start = (currentPage - 1) * perPage;
+  const paged = filtered.slice(start, start + perPage);
 
   async function confirmAction() {
     if (!actionTarget) return;
@@ -134,7 +200,7 @@ export function ProductTable({ products, rootCategories, canManage, canHardDelet
           <input
             type="text"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             placeholder="Buscar producto..."
             className="h-10 pl-9 pr-3 w-full rounded-md border border-slate-200 bg-white text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
           />
@@ -155,7 +221,7 @@ export function ProductTable({ products, rootCategories, canManage, canHardDelet
 
         {/* Filtro por subcategoría — solo cuando hay una raíz seleccionada con hijos */}
         {selectedRoot && subOptions.length > 0 && (
-          <Select value={subFilter} onValueChange={setSubFilter}>
+          <Select value={subFilter} onValueChange={(v) => { setSubFilter(v); setPage(1); }}>
             <SelectTrigger className="w-full sm:w-48">
               <SelectValue placeholder="Todas las subcategorías" />
             </SelectTrigger>
@@ -174,7 +240,7 @@ export function ProductTable({ products, rootCategories, canManage, canHardDelet
             <button
               key={s}
               type="button"
-              onClick={() => setStatusFilter(s)}
+              onClick={() => { setStatusFilter(s); setPage(1); }}
               className={`px-3 py-2 transition-colors ${
                 statusFilter === s
                   ? "bg-blue-600 text-white"
@@ -191,7 +257,7 @@ export function ProductTable({ products, rootCategories, canManage, canHardDelet
 
       {/* Móvil: tarjeta por producto */}
       <div className="md:hidden space-y-2.5">
-        {filtered.map((p) => {
+        {paged.map((p) => {
           const isBottle = isBottleTrackedSlug(p.category?.slug);
           const status = getStockStatus(p.currentStock, p.minStock);
           const bottleLevel = p.bottleLevel as BottleLevel | null;
@@ -301,7 +367,7 @@ export function ProductTable({ products, rootCategories, canManage, canHardDelet
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filtered.map((p) => {
+            {paged.map((p) => {
               const isBottle = isBottleTrackedSlug(p.category?.slug);
               const status = getStockStatus(p.currentStock, p.minStock);
               const bottleLevel = p.bottleLevel as BottleLevel | null;
@@ -427,6 +493,53 @@ export function ProductTable({ products, rootCategories, canManage, canHardDelet
           </tbody>
         </table>
       </div>
+
+      {/* Paginación */}
+      {total > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <span>Por página</span>
+            <Select value={String(perPage)} onValueChange={(v) => { setPerPage(Number(v)); setPage(1); }}>
+              <SelectTrigger className="w-[72px] h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PER_PAGE_OPTIONS.map((n) => (
+                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <span className="tabular-nums">
+              {start + 1}–{Math.min(start + perPage, total)} de {total}
+            </span>
+            <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 px-2"
+                disabled={currentPage <= 1}
+                onClick={() => setPage(currentPage - 1)}
+                aria-label="Página anterior"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <span className="px-1 tabular-nums text-slate-600">{currentPage}/{totalPages}</span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 px-2"
+                disabled={currentPage >= totalPages}
+                onClick={() => setPage(currentPage + 1)}
+                aria-label="Página siguiente"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog
         open={!!actionTarget}
