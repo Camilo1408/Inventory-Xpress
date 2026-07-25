@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { canDoStockCount, canAdjustStock, canAccessInventory } from "@/lib/permissions";
-import { isBottleTrackedSlug, isBottleLevel, bottleStock } from "@/lib/bottle";
+import { isBottleTrackedSlug, isBottleLevel, bottleStock, addBottleEntry } from "@/lib/bottle";
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -16,7 +16,12 @@ export async function GET(req: Request) {
   const type = searchParams.get("type");
   const dateFrom = searchParams.get("dateFrom");
   const dateTo = searchParams.get("dateTo");
-  const page = parseInt(searchParams.get("page") ?? "1");
+  // Saneo: "page" viene del query string; un valor no numérico o negativo
+  // produciría un `skip` inválido y rompería la consulta. El techo evita que
+  // un finito enorme (ej. 1e99) desborde el `skip` de Prisma.
+  const MAX_PAGE = 1_000_000;
+  const rawPage = Number(searchParams.get("page") ?? "1");
+  const page = Number.isFinite(rawPage) ? Math.min(MAX_PAGE, Math.max(1, Math.floor(rawPage))) : 1;
   const limit = 20;
 
   const movements = await prisma.stockMovement.findMany({
@@ -72,6 +77,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Tipo de movimiento inválido" }, { status: 400 });
   }
 
+  // No confiar en el cliente: `quantity` debe ser un número finito. Sin esto,
+  // un JSON con "abc" o 1e400 (→ NaN/Infinity) pasa los guardas `<= 0` (NaN
+  // compara false) y corrompe currentStock/reserveBottles en la DB.
+  if (body.quantity !== undefined && (typeof body.quantity !== "number" || !Number.isFinite(body.quantity))) {
+    return NextResponse.json({ error: "Cantidad inválida" }, { status: 400 });
+  }
+  if (
+    body.reserveBottles !== undefined &&
+    (typeof body.reserveBottles !== "number" || !Number.isFinite(body.reserveBottles))
+  ) {
+    return NextResponse.json({ error: "Reserva inválida" }, { status: 400 });
+  }
+
   const product = await prisma.product.findUnique({
     where: { id: body.productId },
     include: { category: { select: { slug: true } } },
@@ -125,14 +143,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ movement, product: updated }, { status: 201 });
     }
 
-    // ENTRY: añade botellas a la reserva.
+    // ENTRY: añade botellas a la reserva. Si no hay botella abierta ni reserva,
+    // se destapa una "Llena" y el resto va a la reserva (addBottleEntry decide).
     if (body.type === "ENTRY") {
       if (body.quantity === undefined || body.quantity <= 0) {
         return NextResponse.json({ error: "Cantidad debe ser mayor a 0" }, { status: 400 });
       }
-      const qty        = Math.ceil(Math.abs(body.quantity)); // entero positivo
-      const newReserve = (product.reserveBottles ?? 0) + qty;
-      const newStock   = bottleStock(product.bottleLevel, newReserve);
+      const qty         = Math.ceil(Math.abs(body.quantity)); // entero positivo
+      const prevLevel   = isBottleLevel(product.bottleLevel) ? product.bottleLevel : null;
+      const next        = addBottleEntry(prevLevel, product.reserveBottles, qty);
+      const newStock    = bottleStock(next.level, next.reserve);
+      const openedBottle = prevLevel == null && next.level != null;
+
+      // Nota automática cuando la entrada destapa una botella (traza en historial).
+      const autoNote = openedBottle
+        ? `Entrada abrió botella (Llena) + ${next.reserve} en reserva`
+        : null;
+      const notes = body.notes?.trim() || autoNote;
 
       const [movement, updated] = await prisma.$transaction([
         prisma.stockMovement.create({
@@ -140,14 +167,14 @@ export async function POST(req: Request) {
             productId: product.id,
             type: "ENTRY",
             quantity: qty,
-            notes: body.notes ?? null,
+            notes,
             userId,
             userName,
           },
         }),
         prisma.product.update({
           where: { id: product.id },
-          data: { reserveBottles: newReserve, currentStock: newStock },
+          data: { bottleLevel: next.level, reserveBottles: next.reserve, currentStock: newStock },
         }),
       ]);
       return NextResponse.json({ movement, product: updated }, { status: 201 });

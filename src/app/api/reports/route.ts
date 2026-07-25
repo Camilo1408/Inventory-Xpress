@@ -2,29 +2,34 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { canViewReports } from "@/lib/permissions";
+import { businessToday, businessDayStart } from "@/lib/dates";
 
 type Period = "week" | "fortnight" | "month" | "all";
 
+// Los límites del período se calculan sobre el día operativo en la ZONA DEL
+// NEGOCIO (dates.ts), no sobre el reloj UTC del servidor: con `new Date()` a
+// secas la semana/quincena/mes empezaban ~5h antes (medianoche UTC) y los
+// movimientos cerca de medianoche caían en el período equivocado.
 function getPeriodDateFrom(period: Period): Date | null {
-  const now = new Date();
+  const today = businessToday(); // "YYYY-MM-DD" en la zona del negocio
+  const [y, m, d] = today.split("-").map(Number);
 
   if (period === "week") {
-    // Lunes de la semana actual a las 00:00:00
-    const day = now.getDay(); // 0=Dom, 1=Lun ... 6=Sáb
-    const daysFromMonday = day === 0 ? 6 : day - 1;
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysFromMonday);
+    // Lunes de la semana operativa actual.
+    const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0=Dom ... 6=Sáb
+    const daysFromMonday = dow === 0 ? 6 : dow - 1;
+    const monday = new Date(Date.UTC(y, m - 1, d - daysFromMonday));
+    return businessDayStart(monday.toISOString().slice(0, 10));
   }
 
   if (period === "fortnight") {
-    const d = now.getDate();
-    // Primera quincena: 1–15 → inicia día 1
-    // Segunda quincena: 16–fin → inicia día 16
+    // Primera quincena: 1–15 → inicia día 1; segunda: 16–fin → inicia día 16.
     const startDay = d <= 15 ? 1 : 16;
-    return new Date(now.getFullYear(), now.getMonth(), startDay);
+    return businessDayStart(`${today.slice(0, 8)}${String(startDay).padStart(2, "0")}`);
   }
 
   if (period === "month") {
-    return new Date(now.getFullYear(), now.getMonth(), 1);
+    return businessDayStart(`${today.slice(0, 8)}01`);
   }
 
   return null; // "all" — sin límite de fecha

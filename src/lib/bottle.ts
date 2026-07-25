@@ -77,6 +77,26 @@ export function bottleStock(
 }
 
 /**
+ * Reparte una entrada de N botellas cerradas sobre el estado actual del producto:
+ *   - Si NO hay botella abierta ni reserva (level == null && reserva == 0), se
+ *     destapa una botella "Llena" y las restantes van a la reserva.
+ *   - En cualquier otro caso (hay botella abierta con estado, o ya hay reserva),
+ *     todo suma a la reserva y la botella abierta no se toca.
+ * qty se asume entero positivo (la ruta ya lo normaliza).
+ */
+export function addBottleEntry(
+  level: BottleLevel | null | undefined,
+  reserve: number | null | undefined,
+  qty: number
+): { level: BottleLevel | null; reserve: number } {
+  const r = reserve ?? 0;
+  if (level == null && r === 0) {
+    return { level: "full", reserve: qty - 1 };
+  }
+  return { level: level ?? null, reserve: r + qty };
+}
+
+/**
  * Transición al marcar la botella abierta como vacía/consumida:
  *   - Si hay botellas en reserva, se destapa una nueva: reserva − 1 y nivel "full".
  *   - Si no hay reserva, queda sin botella abierta (nivel null) → stock 0.
