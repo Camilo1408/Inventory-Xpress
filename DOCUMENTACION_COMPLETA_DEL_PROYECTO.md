@@ -2,7 +2,9 @@
 
 > Documento técnico para desarrolladores y mantenedores. Para el uso funcional del
 > sistema por parte del cliente, ver [MANUAL_DE_USUARIO.md](MANUAL_DE_USUARIO.md).
-> Última revisión de contenido contra el código: **2026-07**.
+> Última revisión de contenido contra el código: **2026-07-23** (incluye paginación/filtros de
+> productos, edición y descarte de jornada abierta, cálculo de "Esperado", fracciones en
+> conteos e indicador shots/copeo).
 
 ## Tabla de contenido
 
@@ -316,10 +318,10 @@ Motor: **SQLite** en local, **Turso (libSQL)** en producción, vía el adapter
 | Modelo | Descripción |
 |---|---|
 | **Category** | Categorías jerárquicas (raíz + subcategorías, un nivel). `slug` único y estable (base de las claves de permiso por categoría), `sortOrder`, `active`. |
-| **Product** | Producto de inventario: `name`, `unit`, `currentStock` (Float), `minStock`, `imageUrl`, `categoryId`, `active`. Campos opcionales de control por botella (`bottleLevel`, `reserveBottles`, `alertBottleLevel`), `null` salvo en productos de la subcategoría bajo seguimiento. |
+| **Product** | Producto de inventario: `name`, `unit`, `currentStock` (Float, admite fracciones), `minStock`, `imageUrl`, `categoryId`, `active`. Campos opcionales de control por botella (`bottleLevel`, `reserveBottles`, `alertBottleLevel`), `null` salvo en productos de la subcategoría bajo seguimiento. Indicador `shotsCopeo` (Bool) para licores/vinos vendidos por copa. |
 | **StockMovement** | Movimiento: `type` (`ENTRY`/`EXIT`/`ADJUSTMENT`), `quantity` (Float con signo), `notes`, `userId`, `userName`, `createdAt`. Trazabilidad del inventario diario: `dailyInventoryItemId` + `source`. |
 | **DailyInventory** | Jornada de conteo por categoría raíz: `date` (`YYYY-MM-DD`), `status` (`open`/`closed`), `closedAt`/`closedBy`, `reopenedAt`/`reopenedBy`/`reopenReason`. Única por `(date, categoryId)`. |
-| **DailyInventoryItem** | Ítem de una jornada: `initialCount`, `finalCount`, `unregisteredEntry`/`unregisteredExit` (+ motivo/hora), y snapshot de botella. Único por `(dailyInventoryId, productId)`. |
+| **DailyInventoryItem** | Ítem de una jornada: `initialCount`, `finalCount` (Float, admiten fracciones), `unregisteredEntry`/`unregisteredExit` (+ motivo/hora), snapshot de botella y `shotsCopeo`. Único por `(dailyInventoryId, productId)`. |
 | **AuditLog** | Bitácora liviana: `action`, `entityType`, `entityId`, `categoryId`/`categoryName`, `userId`/`userName`, `summary`, `result` (`success`/`denied`). Retención 6 meses. |
 | **User** *(solo standalone)* | Cuenta de acceso: `username` único, `passwordHash`, `role`, `customRoleId`, overrides `permsGrant`/`permsRevoke`, `active`. |
 | **Role** *(solo standalone)* | Rol personalizado: `name`, `slug` único, `permissions` (JSON `string[]`), `active`. |
@@ -401,9 +403,13 @@ lista de productos bajo mínimo y movimientos recientes.
 ![Dashboard: tarjetas de resumen, stock bajo mínimo y movimientos recientes](docs/img/dashboard.png)
 
 ### 14.2 Productos (`/productos`)
-Listado con búsqueda y estado de stock (En stock / Bajo mínimo / Sin stock). Alta
-(`/productos/nuevo`) y edición (`/productos/[id]/editar`) con imagen opcional (Vercel
-Blob). Un producto define su `unit`, `minStock` y categoría.
+Listado con **búsqueda por nombre**, **filtro por categoría** y **filtro por estado**
+(Todos / Activos / Inactivos), contador de resultados y **paginación** en cliente. Los
+filtros y la página activa **persisten** (se conservan al navegar a un producto y volver).
+Estado de stock por fila (En stock / Bajo mínimo / Sin stock) y acciones rápidas
+(editar / activar-desactivar / borrado permanente según permiso). Alta (`/productos/nuevo`) y
+edición (`/productos/[id]/editar`) con imagen opcional (Vercel Blob). Un producto define su
+`unit`, `minStock` y categoría.
 
 ### 14.3 Movimientos (`/movimientos`)
 Registro de **entradas, salidas y ajustes** por producto, con historial paginable y
@@ -413,10 +419,24 @@ suficiente), `ADJUSTMENT` aplica un delta con signo (requiere `canAdjustStock`).
 ### 14.4 Inventario diario (`/inventario-diario`) — *flag `dailyInventory`*
 Conteo por **categoría raíz**. Flujo: seleccionar categoría → **abrir** jornada (conteo
 inicial) → registrar movimientos durante el día → **cerrar** (conteo final, con
-entradas/salidas no registradas y su motivo/hora) → opcionalmente **reabrir** (requiere
-`canReopenDailyInventory`, deja motivo). Con el módulo de botella activo, los productos
-bajo seguimiento se registran por nivel + reserva (con botón "Mantener igual"), sin generar
-movimientos de stock.
+entradas/salidas no registradas y su motivo/hora) → opcionalmente **reabrir** (deja motivo).
+Los conteos admiten **fracciones** (`1/2`, `7 1/2`, `0.5`; ver `parseCount` en el cliente).
+
+Sobre una **jornada abierta** hay dos acciones adicionales gobernadas por la clave `:edit` de
+la categoría (`canDailyCategory(user, slug, "edit")`, misma que reabrir; con fallback por rol
+admin): **Editar conteo inicial** (vuelve al formulario de apertura para corregir) y
+**Descartar jornada** (elimina la jornada del día). La vista de cierre muestra por producto
+`Inicial · Entradas reg. · Salidas reg. · Entrada/Salida NR · Esperado · Conteo real`, donde
+la columna **Esperado = inicial + entradas registradas − salidas registradas** (solo
+movimientos registrados; **no** incluye las NR). Los campos NR vacíos se autocalculan a partir
+de la diferencia entre el conteo real y ese esperado (el sobrante se imputa a Entrada NR y el
+faltante a Salida NR), de modo que no quede residual sin explicar.
+
+Con el módulo de botella activo, los productos de la subcategoría bajo seguimiento se
+registran por **nivel + reserva** (con botón "Mantener igual"), sin generar movimientos de
+stock. En las subcategorías **Licores** y **Vinos** cada ítem numérico expone un indicador
+booleano **`shotsCopeo`** (venta por copa), que se activa/desactiva al abrir o cerrar la
+jornada y se persiste como marca informativa (no altera el stock).
 
 ![Inventario diario de una categoría (vista de conteo/apertura)](docs/img/inv-conteo.png)
 
@@ -562,6 +582,11 @@ Aplica solo a productos cuya subcategoría tiene el slug bajo seguimiento
 
 ![Control por nivel de botella (semáforo) y botellas en reserva](docs/img/bottle.png)
 
+**Indicador shots/copeo** (`SHOTS_COPEO_SLUGS = ["licores", "vinos"]`, `isShotsCopeoTrackedSlug`):
+booleano por producto en esas subcategorías, marcado al abrir/cerrar la jornada. Es una marca
+informativa (venta por copa/trago); **no** genera movimientos ni modifica `currentStock`.
+Distinto y complementario del control por nivel de botella de la subcategoría `cocteles`.
+
 ### 17.3 Alerta de reposición de botella (`needsRestock`)
 Un producto embotellado requiere compra cuando:
 
@@ -585,7 +610,8 @@ Retención de **180 días** (6 meses); ver §21.
   válido; producto existente y activo; cantidad > 0 para entrada/salida de botella; stock
   suficiente en `EXIT` numérico; reserva suficiente en `EXIT` de botella; `BOTTLE_ADJUST`
   solo para productos bajo seguimiento y `ADJUSTMENT` numérico solo para productos normales.
-- **Inventario diario**: `date` con formato `YYYY-MM-DD`; conteos numéricos ≥ 0;
+- **Inventario diario**: `date` con formato `YYYY-MM-DD`; conteos numéricos ≥ 0 que **admiten
+  fracciones** (`parseCount` acepta `1/2`, `7 1/2`, `0.5`; vacío/NaN → null, negativos → 0);
   `bottleLevel` (si viene) debe ser una clave válida; `reserveBottles` entero ≥ 0.
 - **Permisos**: cada clave se valida contra `inventoryPermissions`; los helpers reciben el
   objeto `session.user`.
