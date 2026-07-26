@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { formatDate, formatStock } from "@/lib/utils";
+import { canEditMovements } from "@/lib/permissions";
+import { MovementActions } from "@/components/movements/movement-actions";
 
 export default async function HistorialPage({
   searchParams,
@@ -42,6 +44,11 @@ export default async function HistorialPage({
       ...(productId && { productId }),
     },
   });
+
+  // Corrección de movimientos: solo manuales (source=null) y con permiso.
+  const canEdit = canEditMovements(session.user);
+  const editable = (m: { source: string | null; type: string }) =>
+    canEdit && m.source === null && ["ENTRY", "EXIT", "ADJUSTMENT"].includes(m.type);
 
   const typeBadge: Record<string, string> = {
     ENTRY:         "bg-blue-100 text-blue-700 border-0",
@@ -94,7 +101,14 @@ export default async function HistorialPage({
               </div>
               <div className="flex items-center justify-between gap-2 mt-2 text-xs text-slate-400">
                 <span className="truncate">{m.notes ?? "—"}</span>
-                <span className="shrink-0">{m.userName}</span>
+                <span className="flex items-center gap-2 shrink-0">
+                  {m.userName}
+                  {editable(m) && (
+                    <MovementActions
+                      movement={{ id: m.id, type: m.type, quantity: m.quantity, notes: m.notes, productName: m.product.name, unit: m.product.unit }}
+                    />
+                  )}
+                </span>
               </div>
             </div>
           ))}
@@ -114,6 +128,7 @@ export default async function HistorialPage({
               <th className="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Cantidad</th>
               <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Usuario</th>
               <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Notas</th>
+              {canEdit && <th className="w-20 px-4 py-3" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -136,11 +151,20 @@ export default async function HistorialPage({
                 </td>
                 <td className="px-4 py-3 text-sm text-slate-500">{m.userName}</td>
                 <td className="px-4 py-3 text-sm text-slate-400 max-w-xs truncate">{m.notes ?? "—"}</td>
+                {canEdit && (
+                  <td className="px-4 py-3">
+                    {editable(m) && (
+                      <MovementActions
+                        movement={{ id: m.id, type: m.type, quantity: m.quantity, notes: m.notes, productName: m.product.name, unit: m.product.unit }}
+                      />
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
             {movements.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-400">
+                <td colSpan={canEdit ? 7 : 6} className="px-4 py-10 text-center text-sm text-slate-400">
                   No hay movimientos registrados
                 </td>
               </tr>

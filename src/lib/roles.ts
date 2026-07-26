@@ -39,6 +39,7 @@ export const PERMISSION_CATALOG: readonly PermissionDef[] = [
   { key: INV.VIEW,                 group: "General",   label: "Ver inventario",        description: "Dashboard, ver productos y ver alertas (baseline)." },
   { key: INV.STOCK_COUNT,          group: "Operación", label: "Registrar movimientos", description: "Entradas/salidas e inventario diario." },
   { key: INV.STOCK_ADJUST,         group: "Operación", label: "Ajustar stock",         description: "Ajustes manuales de stock (tipo ADJUSTMENT)." },
+  { key: INV.MOVEMENTS_EDIT,       group: "Operación", label: "Corregir movimientos",  description: "Editar cantidad/notas o eliminar movimientos manuales ya registrados." },
   { key: INV.DAILY_REOPEN,         group: "Operación", label: "Reabrir inventario",    description: "Reabrir un inventario diario ya cerrado." },
   { key: INV.REPORTS_VIEW,         group: "Operación", label: "Ver reportes",          description: "Reportes de inventario por período." },
   { key: INV.PRODUCTS_CREATE,      group: "Productos", label: "Crear productos",       description: "Alta de nuevos productos." },
@@ -72,6 +73,7 @@ const ADMIN_PERMS: string[] = [
   INV.VIEW,
   INV.STOCK_COUNT,
   INV.STOCK_ADJUST,
+  INV.MOVEMENTS_EDIT, // revocable por rol/overrides desde la UI de roles
   INV.DAILY_REOPEN,
   INV.REPORTS_VIEW,
   INV.PRODUCTS_DELETE, // activar/desactivar, pero no crear/editar/borrado permanente
