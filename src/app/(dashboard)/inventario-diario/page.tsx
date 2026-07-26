@@ -124,10 +124,12 @@ export default async function InventarioDiarioPage({
   let movements: { productId: string; type: string; quantity: number }[] = [];
   if (existing) {
     const { start: dayStart, end: dayEnd } = businessDayRange(date);
+    // ADJUSTMENT incluido: los ajustes manuales del día también mueven el
+    // esperado (positivo cuenta como entrada, negativo como salida).
     movements = await prisma.stockMovement.findMany({
       where: {
         productId: { in: existing.items.map((i) => i.productId) },
-        type: { in: ["ENTRY", "EXIT"] },
+        type: { in: ["ENTRY", "EXIT", "ADJUSTMENT"] },
         source: null,
         createdAt: { gte: dayStart, lte: dayEnd },
       },

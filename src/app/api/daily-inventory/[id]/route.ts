@@ -298,11 +298,13 @@ export async function PATCH(
 
   // Movimientos registrados del día (solo manuales: source=null) — base para el "esperado".
   // Se excluyen los auto-generados por el inventario diario para no contarlos dos veces.
+  // ADJUSTMENT incluido: los ajustes manuales también mueven el esperado
+  // (positivo cuenta como entrada, negativo como salida).
   const { start: dayStart0, end: dayEnd0 } = businessDayRange(inventory.date);
   const dayMovements = await prisma.stockMovement.findMany({
     where: {
       productId: { in: inventory.items.map((i) => i.productId) },
-      type: { in: ["ENTRY", "EXIT"] },
+      type: { in: ["ENTRY", "EXIT", "ADJUSTMENT"] },
       source: null,
       createdAt: { gte: dayStart0, lte: dayEnd0 },
     },
@@ -311,7 +313,7 @@ export async function PATCH(
 
   // Movimientos auto-generados por cierres previos — se editan en vez de duplicar.
   const itemIds = inventory.items.map((i) => i.id);
-  const closeSources = ["daily_nr_entry", "daily_nr_exit", "daily_close_adjust"];
+  const closeSources = ["daily_nr_entry", "daily_nr_exit", "daily_close_adjust", "daily_close_bottle"];
   const existingAuto = await prisma.stockMovement.findMany({
     where: { dailyInventoryItemId: { in: itemIds }, source: { in: closeSources } },
     select: { id: true, dailyInventoryItemId: true, source: true, quantity: true },
@@ -343,10 +345,10 @@ export async function PATCH(
       let x = hasExit  ? fc.unregisteredExit!  : 0;
 
       const regEntries = dayMovements
-        .filter((m) => m.productId === fc.productId && m.type === "ENTRY")
+        .filter((m) => m.productId === fc.productId && (m.type === "ENTRY" || (m.type === "ADJUSTMENT" && m.quantity > 0)))
         .reduce((s, m) => s + Math.abs(m.quantity), 0);
       const regExits = dayMovements
-        .filter((m) => m.productId === fc.productId && m.type === "EXIT")
+        .filter((m) => m.productId === fc.productId && (m.type === "EXIT" || (m.type === "ADJUSTMENT" && m.quantity < 0)))
         .reduce((s, m) => s + Math.abs(m.quantity), 0);
       const expected = item.initialCount + regEntries - regExits;
 
@@ -448,25 +450,53 @@ export async function PATCH(
     }
 
     // Ítems de botella: persistir snapshot en el item y reflejarlo en el producto.
-    // No generan StockMovement ni modifican currentStock.
+    // Si el estado enviado cambia el stock, queda un ADJUSTMENT con el delta
+    // (source "daily_close_bottle") — ningún cambio de stock sin rastro. Al
+    // recerrar se EDITA ese movimiento en vez de duplicarlo (mismo patrón que
+    // los ítems numéricos).
     for (const fc of finalCounts) {
       if (!bottleProductIds.has(fc.productId)) continue;
       const item = inventory.items.find((i) => i.productId === fc.productId);
       if (!item) continue;
       const level = isBottleLevel(fc.bottleLevel) ? fc.bottleLevel : null;
       const reserve = fc.reserveBottles ?? 0;
+      // Mantener currentStock sincronizado: reserva + 1 si hay botella abierta.
+      const newStock = bottleStock(level, reserve);
+
+      // Stock base = actual SIN el ajuste de un cierre previo de este ítem
+      // (idempotencia al recerrar, igual que baseStock en los numéricos).
+      const baseStock = (stockByProduct.get(fc.productId) ?? 0) - (autoSumByItem.get(item.id) ?? 0);
+      const qty = newStock - baseStock;
+      const existing = autoByKey.get(`${item.id}:daily_close_bottle`);
+      const note = `Cierre inventario diario ${inventory.date}: nivel ${level ?? "sin botella"}, reserva ${reserve}`;
+
+      if (existing) {
+        await tx.stockMovement.update({
+          where: { id: existing.id },
+          data: { quantity: qty, notes: note },
+        });
+      } else if (qty !== 0) {
+        await tx.stockMovement.create({
+          data: {
+            productId: fc.productId,
+            type: "ADJUSTMENT",
+            quantity: qty,
+            notes: note,
+            userId,
+            userName,
+            dailyInventoryItemId: item.id,
+            source: "daily_close_bottle",
+          },
+        });
+      }
+
       await tx.dailyInventoryItem.update({
         where: { id: item.id },
         data: { bottleLevel: level, reserveBottles: reserve },
       });
       await tx.product.update({
         where: { id: fc.productId },
-        data: {
-          bottleLevel: level,
-          reserveBottles: reserve,
-          // Mantener currentStock sincronizado: reserva + 1 si hay botella abierta.
-          currentStock: bottleStock(level, reserve),
-        },
+        data: { bottleLevel: level, reserveBottles: reserve, currentStock: newStock },
       });
     }
 
@@ -490,7 +520,7 @@ export async function PATCH(
   const movements = await prisma.stockMovement.findMany({
     where: {
       productId: { in: closed.items.map((i) => i.productId) },
-      type: { in: ["ENTRY", "EXIT"] },
+      type: { in: ["ENTRY", "EXIT", "ADJUSTMENT"] },
       source: null,
       createdAt: { gte: dayStart, lte: dayEnd },
     },
@@ -499,8 +529,12 @@ export async function PATCH(
 
   const itemsWithCalc = closed.items.map((item) => {
     const prods    = movements.filter((m) => m.productId === item.productId);
-    const entries  = prods.filter((m) => m.type === "ENTRY").reduce((s, m) => s + Math.abs(m.quantity), 0);
-    const exits    = prods.filter((m) => m.type === "EXIT").reduce((s, m) => s + Math.abs(m.quantity), 0);
+    const entries  = prods
+      .filter((m) => m.type === "ENTRY" || (m.type === "ADJUSTMENT" && m.quantity > 0))
+      .reduce((s, m) => s + Math.abs(m.quantity), 0);
+    const exits    = prods
+      .filter((m) => m.type === "EXIT" || (m.type === "ADJUSTMENT" && m.quantity < 0))
+      .reduce((s, m) => s + Math.abs(m.quantity), 0);
     const expected = item.initialCount + entries - exits;
     const discrepancy = item.finalCount !== null ? item.finalCount - expected : null;
     return { ...item, entries, exits, expected, discrepancy };
