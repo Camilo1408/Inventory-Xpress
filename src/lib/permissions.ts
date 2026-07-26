@@ -19,6 +19,7 @@ export const INV = {
   CATEGORIES_MANAGE: "inventory:categories:manage",
   STOCK_COUNT: "inventory:stock:count",
   STOCK_ADJUST: "inventory:stock:adjust",
+  MOVEMENTS_EDIT: "inventory:movements:edit",
   DAILY_REOPEN: "inventory:daily:reopen",
   REPORTS_VIEW: "inventory:reports:view",
   AUDIT_VIEW: "inventory:audit:view",
@@ -85,6 +86,18 @@ export function canAdjustStock(user: SessionUser): boolean {
 /** Reabrir inventario diario cerrado. */
 export function canReopenDailyInventory(user: SessionUser): boolean {
   return can(user, INV.DAILY_REOPEN);
+}
+
+/**
+ * Corregir (cantidad/notas) o eliminar movimientos manuales.
+ * Fallback por rol SOLO para PROPRIETARY/SUPERADMIN — a diferencia del fallback
+ * admin general, el ADMIN depende de la clave granular, de modo que Nómina (o la
+ * UI local de roles en standalone) pueda revocársela. En integrado, los ADMIN no
+ * tendrán la función hasta que Nómina emita la clave en el JWT.
+ */
+export function canEditMovements(user: SessionUser): boolean {
+  if (can(user, INV.MOVEMENTS_EDIT)) return true;
+  return user.role === "PROPRIETARY" || user.role === "SUPERADMIN";
 }
 
 /** Ver reportes de inventario. */
