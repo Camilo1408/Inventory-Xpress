@@ -120,12 +120,20 @@ function formatDate(dateStr: string) {
 }
 
 function calcMovements(movements: Movement[], productId: string) {
-  const entries = movements
-    .filter((m) => m.productId === productId && m.type === "ENTRY")
-    .reduce((s, m) => s + Math.abs(m.quantity), 0);
-  const exits = movements
-    .filter((m) => m.productId === productId && m.type === "EXIT")
-    .reduce((s, m) => s + Math.abs(m.quantity), 0);
+  // Entradas/salidas del día + ajustes manuales con signo: un ajuste positivo
+  // cuenta como entrada y uno negativo como salida, para que el esperado
+  // refleje TODO movimiento registrado (entrada, salida o ajuste).
+  let entries = 0;
+  let exits = 0;
+  for (const m of movements) {
+    if (m.productId !== productId) continue;
+    if (m.type === "ENTRY") entries += Math.abs(m.quantity);
+    else if (m.type === "EXIT") exits += Math.abs(m.quantity);
+    else if (m.type === "ADJUSTMENT") {
+      if (m.quantity > 0) entries += m.quantity;
+      else exits += Math.abs(m.quantity);
+    }
+  }
   return { entries, exits };
 }
 
@@ -1002,12 +1010,16 @@ function OpenView({
   const bottleItems = useMemo(() => inventory.items.filter((i) => productIsBottle(i.product)), [inventory.items]);
   const numericItems = useMemo(() => inventory.items.filter((i) => !productIsBottle(i.product)), [inventory.items]);
 
+  // Estado VIVO del producto primero (incluye las entradas/ajustes registrados
+  // durante el día); el snapshot del ítem (apertura o cierre previo) solo como
+  // fallback. Con la precedencia invertida, cerrar "sin tocar" revertía el
+  // producto al estado de la apertura y borraba lo registrado en el día.
   const [bottleLevels, setBottleLevels] = useState<Record<string, BottleLevel>>(() =>
     Object.fromEntries(
       inventory.items
         .filter((i) => productIsBottle(i.product))
         .map((i) => {
-          const lvl = isBottleLevel(i.bottleLevel) ? i.bottleLevel : (isBottleLevel(i.product.bottleLevel) ? i.product.bottleLevel : null);
+          const lvl = isBottleLevel(i.product.bottleLevel) ? i.product.bottleLevel : (isBottleLevel(i.bottleLevel) ? i.bottleLevel : null);
           return [i.productId, lvl];
         })
         .filter((e): e is [string, BottleLevel] => e[1] !== null)
@@ -1017,7 +1029,7 @@ function OpenView({
     Object.fromEntries(
       inventory.items
         .filter((i) => productIsBottle(i.product))
-        .map((i) => [i.productId, i.reserveBottles ?? i.product.reserveBottles ?? 0])
+        .map((i) => [i.productId, i.product.reserveBottles ?? i.reserveBottles ?? 0])
     )
   );
   // Indicador shots/copeo — solo Licores y Vinos (ítems numéricos, no botella).

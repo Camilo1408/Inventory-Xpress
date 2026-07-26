@@ -80,10 +80,12 @@ export async function GET(req: NextRequest) {
 
   const { start: dayStart, end: dayEnd } = businessDayRange(date);
 
+  // ADJUSTMENT incluido: los ajustes manuales del día también mueven el
+  // esperado (positivo cuenta como entrada, negativo como salida).
   const movements = await prisma.stockMovement.findMany({
     where: {
       productId: { in: inventory.items.map((i) => i.productId) },
-      type: { in: ["ENTRY", "EXIT"] },
+      type: { in: ["ENTRY", "EXIT", "ADJUSTMENT"] },
       source: null,
       createdAt: { gte: dayStart, lte: dayEnd },
     },
@@ -92,8 +94,12 @@ export async function GET(req: NextRequest) {
 
   const itemsWithCalc = inventory.items.map((item) => {
     const prods    = movements.filter((m) => m.productId === item.productId);
-    const entries  = prods.filter((m) => m.type === "ENTRY").reduce((s, m) => s + Math.abs(m.quantity), 0);
-    const exits    = prods.filter((m) => m.type === "EXIT").reduce((s, m) => s + Math.abs(m.quantity), 0);
+    const entries  = prods
+      .filter((m) => m.type === "ENTRY" || (m.type === "ADJUSTMENT" && m.quantity > 0))
+      .reduce((s, m) => s + Math.abs(m.quantity), 0);
+    const exits    = prods
+      .filter((m) => m.type === "EXIT" || (m.type === "ADJUSTMENT" && m.quantity < 0))
+      .reduce((s, m) => s + Math.abs(m.quantity), 0);
     const expected = item.initialCount + entries - exits;
     const discrepancy = item.finalCount !== null ? item.finalCount - expected : null;
     return { ...item, entries, exits, expected, discrepancy };
