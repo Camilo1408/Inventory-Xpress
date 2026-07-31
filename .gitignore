@@ -57,3 +57,6 @@ next-env.d.ts
 .vercel
 
 .vercel
+
+# Config local de Claude Code (por usuario, no compartir)
+.claude/settings.local.json

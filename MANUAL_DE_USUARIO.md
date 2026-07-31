@@ -45,7 +45,7 @@ algunas funciones (inventario diario, control por nivel de botella) pueden estar
 | Rol | Qué puede hacer (resumen) |
 |---|---|
 | **Superadmin** | Todo: productos, categorías, usuarios, roles, auditoría, movimientos, inventario y reportes. |
-| **Admin** | Operar el inventario (movimientos, inventario diario, ajustes, reabrir, reportes, activar/desactivar productos, auditoría). **No** crea/edita productos ni categorías, ni gestiona usuarios. |
+| **Admin** | Operar el inventario (movimientos, corregir movimientos, inventario diario, ajustes, reabrir, reportes, activar/desactivar productos, auditoría). **No** crea/edita productos ni categorías, ni gestiona usuarios. |
 | **Empleado** | Inventario diario, movimientos, ver productos, ver alertas y dashboard. |
 
 > Su negocio puede tener además **roles personalizados** con combinaciones específicas de
@@ -192,9 +192,13 @@ posible si el producto **no** tiene historial de movimientos.
 
 **Propósito:** registrar entradas, salidas y ajustes de stock.
 **Quién:** usuarios con permiso "Registrar movimientos" (Empleado, Admin, Superadmin o rol
-equivalente). Los **ajustes** requieren además el permiso "Ajustar stock".
+equivalente). Los **ajustes** requieren además el permiso "Ajustar stock", y **corregir o
+eliminar** un movimiento ya registrado requiere el permiso "Corregir movimientos"
+(ver [§5.3](#53-corregir-o-eliminar-un-movimiento-ya-registrado)).
 
-**Registrar una entrada o salida — pasos:**
+### 5.1 Registrar una entrada, salida o ajuste
+
+**Pasos:**
 1. Menú **Movimientos**.
 2. Busque y seleccione el **producto** (verá su stock actual).
 3. Elija el tipo: **Entrada** (compra/ingreso) o **Salida** (consumo/merma/venta).
@@ -221,9 +225,6 @@ stock". Deje siempre una observación con el motivo.
 > consumos, mermas) y **Ajuste** solo para **corregir** el stock cuando el sistema no coincide
 > con lo físico. Así el historial refleja lo que de verdad pasó.
 
-**Ver el historial:** **Movimientos** → **Historial**. Filtre por producto, tipo y rango de
-fechas.
-
 **Errores / situaciones comunes:**
 - *Stock insuficiente:* no se puede sacar más de lo que hay.
 - *Cantidad inválida:* debe ser mayor que 0.
@@ -237,7 +238,60 @@ En **celular**, el formulario se apila en vertical para facilitar el registro co
 
 ![Formulario de movimiento en celular](docs/img/movil-movimientos.png)
 
+### 5.2 Ver el historial
+
+**Pasos:** **Movimientos** → **Historial**. Filtre por producto, tipo y rango de fechas.
+La lista está paginada, de la más reciente a la más antigua.
+
 ![Historial de movimientos con filtros](docs/img/historial.png)
+
+### 5.3 Corregir o eliminar un movimiento ya registrado
+
+**Propósito:** arreglar un movimiento mal registrado (cantidad equivocada, observación
+incorrecta) o borrarlo si no debió existir, **devolviendo el stock a su valor correcto**.
+**Quién:** usuarios con el permiso **"Corregir movimientos"** (Superadmin y, salvo que se lo
+revoquen, Admin).
+
+**Pasos:**
+1. Menú **Movimientos** → **Historial**.
+2. Ubique el movimiento. Solo los movimientos **registrados a mano** muestran los iconos de
+   **lápiz** (corregir) y **papelera** (eliminar) al final de la fila.
+3. **Corregir:** toque el lápiz, cambie la **cantidad** y/o las **observaciones** y pulse
+   **Guardar corrección**. El sistema recalcula el stock con la **diferencia** (si una entrada
+   de 10 pasa a 8, el stock baja 2).
+4. **Eliminar:** toque la papelera y confirme con **Eliminar y revertir**. El movimiento
+   desaparece del historial y su efecto en el stock se deshace.
+
+**Resultado esperado:** el stock queda corregido de inmediato y la acción se registra en
+**Auditoría** (quién, cuándo y el antes → después).
+
+![Historial: los iconos de corregir y eliminar aparecen solo en los movimientos registrados a mano](docs/img/historial-acciones.png)
+
+![Ventana para corregir la cantidad y las observaciones de un movimiento](docs/img/movimiento-editar.png)
+
+![Confirmación antes de eliminar un movimiento y revertir su efecto](docs/img/movimiento-eliminar.png)
+
+En **celular** los iconos aparecen dentro de la tarjeta de cada movimiento:
+
+![Historial en celular con los iconos de corregir y eliminar](docs/img/movil-historial-acciones.png)
+
+**Errores / situaciones comunes:**
+- *"Solo se pueden corregir movimientos manuales":* el movimiento lo generó el **inventario
+  diario** (cierre, entrada/salida no registrada) o el **ajuste de nivel** de una botella. Se
+  corrige desde esa pantalla, no desde el historial.
+- *"La jornada de ese día está cerrada":* primero **reabra** la jornada de esa fecha en
+  *Inventario Diario* y luego corrija el movimiento.
+- *"La corrección dejaría el stock en −N":* el valor que intenta poner deja el inventario en
+  negativo; revise la cantidad o corrija antes otros movimientos.
+- *No ve los iconos:* su rol no tiene el permiso "Corregir movimientos", o el movimiento no es
+  manual.
+
+**Recomendación:** use la corrección para **errores de digitación**. Si lo que cambió es la
+realidad (llegó más mercancía, hubo una merma), registre un **movimiento nuevo**: así el
+historial cuenta lo que de verdad pasó.
+
+> En licores con **control por nivel de botella**, corregir una entrada o salida cambia solo
+> las **botellas en reserva**; el nivel de la botella abierta se corrige con **Ajuste Nivel**.
 
 ---
 
@@ -285,13 +339,19 @@ Con la jornada **En curso**, cada producto muestra una fila con:
   deja **vacías**, el sistema las calcula solo, a partir de la diferencia entre el conteo real
   y el esperado.
 - **Esperado:** lo que *debería* haber = **Inicial + Entradas registradas − Salidas
-  registradas** (cuenta solo los movimientos ya registrados, no las NR). Es la referencia
-  contra la que se compara su conteo físico.
+  registradas**. Cuenta todos los movimientos que usted registró ese día, incluidos los
+  **ajustes** (un ajuste positivo suma como entrada y uno negativo resta como salida); **no**
+  cuenta las NR. Es la referencia contra la que se compara su conteo físico.
 - **Conteo real:** lo que usted cuenta físicamente al cierre.
 
 Pasos: ingrese el **conteo real** de cada producto (y, si aplica, las entradas/salidas NR con
 su motivo) → presione **Cerrar**. Si el conteo real difiere del esperado, el sistema ajusta el
 stock automáticamente y deja registro.
+
+> **Productos por nivel de botella:** al cerrar, cada botella aparece con **su estado actual**
+> (el que tenga el producto en ese momento, incluidas las entradas del día), no con el estado
+> con el que abrió la jornada. Si lo deja tal cual, nada cambia; si lo modifica, el sistema
+> guarda el ajuste correspondiente para que ningún cambio de existencias quede sin registro.
 
 ![Jornada en curso: columnas Inicial/Entradas/Salidas/Esperado y botones para editar o descartar](docs/img/inv-jornada-abierta.png)
 
@@ -398,7 +458,7 @@ En **celular**, la lista de reposición se muestra como tarjetas por producto:
 ## 10. Auditoría
 
 **Propósito:** revisar el historial de acciones sensibles (quién abrió/cerró/reabrió
-inventarios, creó categorías, o intentos de acceso denegado).
+inventarios, corrigió o eliminó movimientos, creó categorías, o intentos de acceso denegado).
 **Quién:** usuarios con permiso "Ver auditoría" (Admin, Superadmin o rol equivalente).
 
 **Pasos:** menú **Auditoría**. Filtre por **acción**, **usuario**, **resultado**, texto o
@@ -487,7 +547,9 @@ no depender solo de los roles base.
 **Crear un rol — pasos:**
 1. Menú **Roles** → **Nuevo rol**.
 2. Escriba **nombre** y descripción.
-3. Marque los **permisos** por grupo (General, Operación, Productos, Admin).
+3. Marque los **permisos** por grupo (General, Operación, Productos, Admin). En *Operación*
+   están, entre otros, "Registrar movimientos", "Ajustar stock", **"Corregir movimientos"**,
+   "Reabrir inventario" y "Ver reportes".
 4. **Guardar**. Luego asígnelo a un usuario desde **Usuarios**.
 
 **Datos requeridos:** nombre y selección de permisos.
@@ -524,7 +586,8 @@ ninguna app.
   tóquelo para abrir las secciones.
 - Las **tablas** (productos, movimientos, inventario diario) se muestran como **tarjetas**
   apiladas: cada producto ocupa su propia tarjeta con su nombre y sus campos en vertical, más
-  fáciles de tocar y llenar con el dedo.
+  fáciles de tocar y llenar con el dedo. Las acciones de cada fila (editar, activar/desactivar,
+  corregir o eliminar un movimiento) quedan dentro de su tarjeta.
 - Los botones y campos crecen para facilitar el toque; el contenido se desplaza en vertical.
 
 **Recomendación:** para el **conteo del inventario diario** en el piso del negocio, el celular
@@ -549,6 +612,9 @@ es cómodo (una tarjeta por producto). Para **reportes** y tareas de administrac
   para que el conteo físico no cambie a mitad de camino.
 - **Use Ajuste solo para corregir.** Los movimientos reales van como Entrada/Salida; el Ajuste
   es para cuadrar diferencias tras un conteo.
+- **Corrija los errores de digitación, no la realidad.** Si se equivocó al teclear, corrija o
+  elimine ese movimiento desde el historial; si cambió lo que pasó en el negocio, registre un
+  movimiento nuevo. Toda corrección queda en *Auditoría*.
 - **Revise las alertas antes de comprar.** La sección *Alertas* y su botón *Copiar lista de
   compras* le arma el pedido en segundos.
 - **Cuide sus credenciales.** Cambie la contraseña inicial, no la comparta y cierre sesión en
@@ -567,7 +633,10 @@ es cómodo (una tarjeta por producto). Para **reportes** y tareas de administrac
 | **Entrada / Salida** | Ingreso (compra) o egreso (consumo, merma, venta) real de mercancía. |
 | **Ajuste** | Corrección manual del stock para cuadrarlo con el conteo físico. |
 | **Inventario diario** | Conteo del día por área (categoría) que compara lo físico con el sistema. |
-| **Esperado** | Lo que *debería* haber al cierre = inicial + entradas registradas − salidas registradas. |
+| **Esperado** | Lo que *debería* haber al cierre = inicial + entradas registradas − salidas registradas (los ajustes del día cuentan según su signo). |
+| **Movimiento manual** | El que alguien registró desde *Movimientos*. Es el único que se puede corregir o eliminar desde el historial. |
+| **Movimiento automático** | El que genera el sistema (cierre del inventario diario, entradas/salidas no registradas, ajuste de nivel de botella). Se corrige desde su propia pantalla. |
+| **Corregir movimiento** | Cambiar la cantidad/observaciones de un movimiento manual, o eliminarlo; el stock se recalcula con la diferencia. |
 | **Entrada/Salida NR** | Entrada o salida "no registrada" como movimiento durante el día; se anota al cerrar. |
 | **Jornada** | Una sesión de inventario diario de una categoría en una fecha (abierta o cerrada). |
 | **Reabrir** | Volver a dejar editable una jornada ya cerrada (deja constancia del motivo). |
@@ -593,6 +662,21 @@ Verifique que haya stock suficiente; el sistema no permite dejar el stock por de
 
 **¿Por qué un producto embotellado no aparece en alertas aunque está casi vacío?**
 Porque tiene **botellas de reserva**. Solo alerta cuando no queda reserva.
+
+**Me equivoqué al registrar un movimiento (cantidad o nota).**
+Vaya a **Movimientos → Historial** y use el icono de **lápiz** de esa fila para corregirlo, o
+el de **papelera** para eliminarlo (el stock se revierte). Solo aparecen en los movimientos
+registrados a mano y con el permiso "Corregir movimientos". Ver
+[§5.3](#53-corregir-o-eliminar-un-movimiento-ya-registrado).
+
+**Quiero corregir un movimiento y el sistema dice que la jornada está cerrada.**
+Ese movimiento pertenece a un día cuyo inventario diario ya se cerró. Reabra esa jornada en
+*Inventario Diario* (requiere el permiso "Reabrir/editar"), corrija el movimiento y vuelva a
+cerrarla.
+
+**Un movimiento no muestra los iconos de corregir/eliminar.**
+Porque lo generó el sistema (cierre de inventario diario, entrada/salida no registrada o
+ajuste de nivel de botella). Esos se corrigen desde la pantalla que los originó.
 
 **Necesito corregir un inventario ya cerrado.**
 Pida a alguien con permiso "Reabrir/editar" que lo reabra; deberá indicar un motivo.

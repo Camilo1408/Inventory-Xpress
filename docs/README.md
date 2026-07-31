@@ -22,6 +22,7 @@ Vigente y de consulta habitual.
 | [`BACKUP.md`](BACKUP.md) | Sistema de backups per-cliente: cómo funciona, secrets, restauración, prueba de integridad |
 | [`runbooks/releases-y-multicliente.md`](runbooks/releases-y-multicliente.md) | Flujo de releases (demo → clientes), alta de cliente nuevo, consolidación de ramas |
 | [`NOMINA-SYNC-PERMISOS-CATEGORIAS.md`](NOMINA-SYNC-PERMISOS-CATEGORIAS.md) | Contrato de sincronización de permisos por categoría con Nómina Xpress (lado inventario listo; pendiente en Nómina) |
+| [`nomina-spec-permiso-movements-edit.md`](nomina-spec-permiso-movements-edit.md) | Spec de la clave `inventory:movements:edit` que Nómina Xpress debe emitir para que los ADMIN puedan corregir movimientos (pendiente en Nómina) |
 
 ## Referencia histórica
 
@@ -37,6 +38,20 @@ documentos principales mandan).
 | [`superpowers/specs/2026-07-06-modelo-multicliente-diseno.md`](superpowers/specs/2026-07-06-modelo-multicliente-diseno.md) | Diseño del modelo multi-cliente + feature flags |
 | [`superpowers/plans/2026-07-06-modelo-multicliente.md`](superpowers/plans/2026-07-06-modelo-multicliente.md) | Plan de implementación del modelo multi-cliente |
 | [`superpowers/specs/2026-07-09-backups-diseno.md`](superpowers/specs/2026-07-09-backups-diseno.md) | Diseño del sistema de backups per-cliente |
+
+## Verificación (baterías E2E)
+
+No hay framework de tests: la regresión se corre a mano con los scripts de `prisma/`
+(`e2e-full-suite.ts`, `test-daily-inventory.ts`, `test-movement-edit.ts`,
+`test-bottle-entry.ts`). Requisitos y comandos en
+[`../DOCUMENTACION_COMPLETA_DEL_PROYECTO.md` §11.1](../DOCUMENTACION_COMPLETA_DEL_PROYECTO.md#111-baterías-e2e-prismats).
+
+## Capturas (`docs/img/`)
+
+Las imágenes que ilustran el manual y la documentación técnica. Se toman del sistema en
+funcionamiento, en **modo standalone** con la BD local sembrada: escritorio a 1280×800 (o
+1520×800 cuando la tabla es ancha) con densidad ×2, y móvil a 390×844 con densidad ×3.
+Al cambiar una pantalla, vuelva a capturar la imagen afectada conservando su nombre.
 
 ## Archivos de instrucciones para agentes de IA
 

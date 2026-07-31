@@ -2,8 +2,10 @@
 
 > Documento técnico para desarrolladores y mantenedores. Para el uso funcional del
 > sistema por parte del cliente, ver [MANUAL_DE_USUARIO.md](MANUAL_DE_USUARIO.md).
-> Última revisión de contenido contra el código: **2026-07-23** (incluye paginación/filtros de
-> productos, edición y descarte de jornada abierta, cálculo de "Esperado", fracciones en
+> Última revisión de contenido contra el código: **2026-07-31** (incluye corrección y
+> eliminación de movimientos manuales, cierre de botellas con estado vivo y rastro
+> `daily_close_bottle`, "Esperado" con ajustes manuales, baterías E2E de `prisma/`,
+> paginación/filtros de productos, edición y descarte de jornada abierta, fracciones en
 > conteos e indicador shots/copeo).
 
 ## Tabla de contenido
@@ -83,7 +85,8 @@ stock y cuánto** en todo momento, con soporte para:
 ## 3. Alcance
 
 **Incluye:** autenticación (standalone o integrada), gestión de productos y categorías
-jerárquicas, movimientos de stock (entrada/salida/ajuste), conteo/inventario diario por
+jerárquicas, movimientos de stock (entrada/salida/ajuste) con **corrección y eliminación**
+de los movimientos manuales, conteo/inventario diario por
 categoría (apertura, cierre, reapertura, entradas y salidas no registradas), alertas de
 stock bajo, reportes por período, auditoría con retención de 6 meses, gestión de
 usuarios/roles/permisos (en modo standalone), modelo multi-cliente con feature flags por
@@ -202,7 +205,9 @@ inventario-restaurante/
 ├── prisma/
 │   ├── schema.prisma          # Modelo de datos (Category, Product, StockMovement, ...)
 │   ├── seed.ts                # Datos iniciales: categorías demo + 3 usuarios por rol
-│   └── backfill-*.ts          # Scripts puntuales de migración de datos
+│   ├── backfill-*.ts          # Scripts puntuales de migración de datos
+│   ├── e2e-full-suite.ts      # Batería E2E general (login, permisos, módulos)
+│   └── test-*.ts              # Baterías E2E por función (ver §11.1)
 ├── prisma.config.ts           # Config Prisma (URL de la BD, seed, migraciones)
 ├── clients/registry.json      # Índice de clientes (sin secretos)
 ├── scripts/
@@ -308,6 +313,31 @@ pnpm dev      # http://localhost:3001
 Otros comandos: `pnpm build` (incluye `prisma generate`), `pnpm start`, `pnpm lint`,
 `pnpm seed`, `npx prisma db push`, `npx prisma generate`. Credenciales demo: ver §15.6.
 
+### 11.1 Baterías E2E (`prisma/*.ts`)
+
+No hay framework de tests (Jest/Vitest/Playwright): la verificación se hace con **scripts
+E2E propios** que se ejecutan con `tsx` contra el **servidor de desarrollo en standalone**
+(`AUTH_MODE=standalone`, `pnpm dev` en :3001) y la **BD local sembrada** (`pnpm seed`).
+Cada script inicia sesión por HTTP con los usuarios demo, ejerce la API real y limpia lo
+que crea.
+
+| Script | Qué cubre | Requiere |
+|---|---|---|
+| `prisma/e2e-full-suite.ts` | Regresión general: login, permisos por rol, movimientos, inventario diario (abrir/cerrar/reabrir), reportes, auditoría, roles/usuarios, overrides sin re-login y perfil. | Dev server |
+| `prisma/test-daily-inventory.ts` | Inventario diario: "Esperado" con ajustes, cierre con el conteo real, botellas con estado vivo y rastro `daily_close_bottle` (sin duplicar al recerrar), invariante *stock final = stock inicial + Σ movimientos*. | Dev server |
+| `prisma/test-movement-edit.ts` | Corrección de movimientos: permisos, edición por delta, guardas (movimiento auto, stock/reserva negativos, jornada cerrada → 409), eliminación con reversión y auditoría. | Dev server |
+| `prisma/test-bottle-entry.ts` | Unitario puro de `addBottleEntry`/`bottleStock` (sin BD ni servidor). | — |
+
+```bash
+npx tsx prisma/e2e-full-suite.ts      # regresión general
+npx tsx prisma/test-daily-inventory.ts
+npx tsx prisma/test-movement-edit.ts
+npx tsx prisma/test-bottle-entry.ts   # no necesita servidor
+```
+
+> Los scripts que tocan la BD **escriben sobre la base local**: úselos contra
+> `file:./inventario.db` de desarrollo, nunca apuntando a una base de cliente.
+
 ## 12. Base de datos
 
 Motor: **SQLite** en local, **Turso (libSQL)** en producción, vía el adapter
@@ -319,7 +349,7 @@ Motor: **SQLite** en local, **Turso (libSQL)** en producción, vía el adapter
 |---|---|
 | **Category** | Categorías jerárquicas (raíz + subcategorías, un nivel). `slug` único y estable (base de las claves de permiso por categoría), `sortOrder`, `active`. |
 | **Product** | Producto de inventario: `name`, `unit`, `currentStock` (Float, admite fracciones), `minStock`, `imageUrl`, `categoryId`, `active`. Campos opcionales de control por botella (`bottleLevel`, `reserveBottles`, `alertBottleLevel`), `null` salvo en productos de la subcategoría bajo seguimiento. Indicador `shotsCopeo` (Bool) para licores/vinos vendidos por copa. |
-| **StockMovement** | Movimiento: `type` (`ENTRY`/`EXIT`/`ADJUSTMENT`), `quantity` (Float con signo), `notes`, `userId`, `userName`, `createdAt`. Trazabilidad del inventario diario: `dailyInventoryItemId` + `source`. |
+| **StockMovement** | Movimiento: `type` (`ENTRY`/`EXIT`/`ADJUSTMENT`), `quantity` (Float con signo), `notes`, `userId`, `userName`, `createdAt`. Trazabilidad: `dailyInventoryItemId` + `source`. `source = null` marca el movimiento **manual** (el único corregible desde `/movimientos/historial`); los auto-generados llevan `daily_open_adjust`, `daily_nr_entry`, `daily_nr_exit`, `daily_close_adjust`, `daily_close_bottle` o `bottle_adjust`. |
 | **DailyInventory** | Jornada de conteo por categoría raíz: `date` (`YYYY-MM-DD`), `status` (`open`/`closed`), `closedAt`/`closedBy`, `reopenedAt`/`reopenedBy`/`reopenReason`. Única por `(date, categoryId)`. |
 | **DailyInventoryItem** | Ítem de una jornada: `initialCount`, `finalCount` (Float, admiten fracciones), `unregisteredEntry`/`unregisteredExit` (+ motivo/hora), snapshot de botella y `shotsCopeo`. Único por `(dailyInventoryId, productId)`. |
 | **AuditLog** | Bitácora liviana: `action`, `entityType`, `entityId`, `categoryId`/`categoryName`, `userId`/`userName`, `summary`, `result` (`success`/`denied`). Retención 6 meses. |
@@ -376,6 +406,7 @@ Objeto `config` con `authMode`, `brand.{name, logoUrl}` y
 | `/api/products` + `/[id]` | GET, POST, PUT, DELETE | crear/editar/eliminar/borrado permanente según clave |
 | `/api/categories` + `/[id]` | GET, POST, PUT, DELETE | `canManageCategories` |
 | `/api/movements` | GET, POST | `canDoStockCount` (+`canAdjustStock` para ajustes) |
+| `/api/movements/[id]` | PATCH, DELETE | `canEditMovements` (solo movimientos manuales) |
 | `/api/daily-inventory` + `/[id]` | GET, POST, PATCH, DELETE | `canDoStockCount` / `canReopenDailyInventory` + flag `dailyInventory` |
 | `/api/alerts` + `/shopping-list` | GET | acceso |
 | `/api/reports` | GET | `canViewReports` |
@@ -391,7 +422,9 @@ Objeto `config` con `authMode`, `brand.{name, logoUrl}` y
 
 `permissions.ts` (claves `INV` y helpers), `roles.ts` (catálogo, roles base y resolución
 efectiva), `permission-registry.ts` (sync con Nómina), `bottle.ts` (control por botella),
-`audit.ts` (registro y purga), `blob.ts`, `slug.ts`, `category-order.ts`, `numeric.ts`,
+`audit.ts` (registro y purga), `dates.ts` (jornada en la zona horaria del negocio:
+`businessToday`, `toBusinessDate`, `businessDayRange`), `alert-data.ts` (datos de
+alertas/lista de compras), `blob.ts`, `slug.ts`, `category-order.ts`, `numeric.ts`,
 `utils.ts`.
 
 ## 14. Funcionalidades, una por una
@@ -416,6 +449,18 @@ Registro de **entradas, salidas y ajustes** por producto, con historial paginabl
 filtrable (`/movimientos/historial`). `ENTRY` suma, `EXIT` resta (valida stock
 suficiente), `ADJUSTMENT` aplica un delta con signo (requiere `canAdjustStock`).
 
+**Corrección de movimientos** (`canEditMovements`, clave `inventory:movements:edit`): en el
+historial, cada movimiento **manual** (`source = null`) muestra dos acciones —**editar**
+(cantidad y/o observaciones) y **eliminar** (revierte su efecto en el stock)— tanto en la
+tabla de escritorio como en las tarjetas móviles. Ambas van por
+`PATCH`/`DELETE /api/movements/[id]`, aplican el **delta** en la misma transacción que
+actualiza el movimiento y quedan en auditoría (`movement.edit` / `movement.delete`). Reglas
+en §17.1; guardas y errores en §18.
+
+![Historial de movimientos: acciones de corregir y eliminar en el movimiento manual](docs/img/historial-acciones.png)
+
+![Modal de corrección de un movimiento](docs/img/movimiento-editar.png)
+
 ### 14.4 Inventario diario (`/inventario-diario`) — *flag `dailyInventory`*
 Conteo por **categoría raíz**. Flujo: seleccionar categoría → **abrir** jornada (conteo
 inicial) → registrar movimientos durante el día → **cerrar** (conteo final, con
@@ -427,14 +472,21 @@ la categoría (`canDailyCategory(user, slug, "edit")`, misma que reabrir; con fa
 admin): **Editar conteo inicial** (vuelve al formulario de apertura para corregir) y
 **Descartar jornada** (elimina la jornada del día). La vista de cierre muestra por producto
 `Inicial · Entradas reg. · Salidas reg. · Entrada/Salida NR · Esperado · Conteo real`, donde
-la columna **Esperado = inicial + entradas registradas − salidas registradas** (solo
-movimientos registrados; **no** incluye las NR). Los campos NR vacíos se autocalculan a partir
-de la diferencia entre el conteo real y ese esperado (el sobrante se imputa a Entrada NR y el
-faltante a Salida NR), de modo que no quede residual sin explicar.
+la columna **Esperado = inicial + entradas registradas − salidas registradas**. Cuentan los
+movimientos **manuales** del día (`source = null`) de los tres tipos: `ENTRY` y los
+**`ADJUSTMENT` positivos** suman como entrada, `EXIT` y los **`ADJUSTMENT` negativos** restan
+como salida; **no** incluye las NR. El mismo criterio se aplica en los cuatro puntos que
+calculan el esperado (page, cliente, `GET` y cierre). Los campos NR vacíos se autocalculan a
+partir de la diferencia entre el conteo real y ese esperado (el sobrante se imputa a Entrada
+NR y el faltante a Salida NR), de modo que no quede residual sin explicar.
 
 Con el módulo de botella activo, los productos de la subcategoría bajo seguimiento se
-registran por **nivel + reserva** (con botón "Mantener igual"), sin generar movimientos de
-stock. En las subcategorías **Licores** y **Vinos** cada ítem numérico expone un indicador
+registran por **nivel + reserva** (con botón "Mantener igual"). El formulario de cierre se
+pre-llena con el **estado vivo del producto** (el snapshot del ítem solo como *fallback*),
+de modo que cerrar "sin tocar" no revierte las entradas registradas durante el día. Si el
+estado enviado cambia el stock, el cierre deja un `ADJUSTMENT` con el delta y
+`source: daily_close_bottle`; al **recerrar** se **edita** ese movimiento en vez de
+duplicarlo. En las subcategorías **Licores** y **Vinos** cada ítem numérico expone un indicador
 booleano **`shotsCopeo`** (venta por copa), que se activa/desactiva al abrir o cerrar la
 jornada y se persiste como marca informativa (no altera el stock).
 
@@ -471,7 +523,7 @@ El usuario cambia su nombre de usuario y su contraseña.
 
 ## 15. Roles, permisos y restricciones
 
-### 15.1 Claves de permiso globales (12) — objeto `INV` en `permissions.ts`
+### 15.1 Claves de permiso globales (13) — objeto `INV` en `permissions.ts`
 
 | Clave | Helper | Acción |
 |---|---|---|
@@ -483,10 +535,19 @@ El usuario cambia su nombre de usuario y su contraseña.
 | `inventory:categories:manage` | `canManageCategories` | Crear/editar categorías. |
 | `inventory:stock:count` | `canDoStockCount` | Registrar movimientos e inventario diario. |
 | `inventory:stock:adjust` | `canAdjustStock` | Ajustes manuales (tipo `ADJUSTMENT`). |
+| `inventory:movements:edit` | `canEditMovements` | Corregir o eliminar movimientos manuales ya registrados. |
 | `inventory:daily:reopen` | `canReopenDailyInventory` | Reabrir inventario diario cerrado. |
 | `inventory:reports:view` | `canViewReports` | Ver reportes. |
 | `inventory:audit:view` | `canViewAudit` | Ver auditoría. |
 | `inventory:users:manage` | `canManageUsers` | Gestionar usuarios y roles (standalone). |
+
+> **Excepción de `canEditMovements`:** es el único helper con *fallback* por rol acotado.
+> Concede si la clave está en `inventoryPermissions` y, si no, **solo** a `PROPRIETARY` y
+> `SUPERADMIN`. El `ADMIN` depende de la clave —deliberado, para que Nómina (o la UI local
+> de roles en standalone) pueda revocársela—. Ver §25 y
+> `docs/nomina-spec-permiso-movements-edit.md`.
+
+![Catálogo de permisos por grupo, con "Corregir movimientos" en Operación](docs/img/roles-permisos.png)
 
 ### 15.2 Claves por categoría de inventario diario
 
@@ -507,7 +568,7 @@ permiso de su raíz. `canDailyCategory` decide así:
 | Rol | Alcance |
 |---|---|
 | **SUPERADMIN** | Todos los permisos (a prueba de bloqueo: siempre obtiene el catálogo completo). |
-| **ADMIN** | Opera el inventario: `view`, `stock:count`, `stock:adjust`, `daily:reopen`, `reports:view`, `products:delete` (activar/desactivar), `audit:view`. **No** crea/edita productos, ni gestiona categorías o usuarios. |
+| **ADMIN** | Opera el inventario: `view`, `stock:count`, `stock:adjust`, `movements:edit`, `daily:reopen`, `reports:view`, `products:delete` (activar/desactivar), `audit:view` (8 claves). **No** crea/edita productos, ni gestiona categorías o usuarios. |
 | **EMPLOYEE** | `view`, `stock:count`. |
 
 ### 15.4 Resolución de permisos efectivos (standalone)
@@ -520,8 +581,10 @@ JWT de Nómina (con *fallback* de compatibilidad a `view` + `stock:count` si el 
 
 ### 15.5 Rol PROPRIETARY
 
-Definido en **Nómina Xpress** (no en los roles base locales). En integrated recibe los 12
-permisos globales y entra por el gate de acceso como cualquier rol con permisos.
+Definido en **Nómina Xpress** (no en los roles base locales). En integrated recibe los
+permisos globales que Nómina emita y entra por el gate de acceso como cualquier rol con
+permisos; además tiene *fallback* por rol en las categorías del inventario diario y en
+`canEditMovements`.
 
 ### 15.6 Credenciales demo (standalone)
 
@@ -542,6 +605,15 @@ permisos globales y entra por el gate de acceso como cualquier rol con permisos.
 1. El usuario elige producto, tipo (`ENTRY`/`EXIT`/`ADJUSTMENT`) y cantidad.
 2. La API valida permisos, existencia y estado del producto, y las reglas de stock.
 3. En una transacción: crea el `StockMovement` y actualiza `currentStock`.
+
+### 16.2.b Corrección o eliminación de un movimiento manual
+1. Desde `/movimientos/historial`, sobre una fila con `source = null`.
+2. La API valida `canEditMovements`, que el movimiento sea manual y que la **jornada del día
+   del movimiento** (categoría raíz del producto) **no esté cerrada** (si lo está → 409:
+   reabrir primero desde Inventario Diario).
+3. Calcula el **delta** (`nueva − anterior`; en eliminación, `−anterior`), verifica que ni el
+   stock ni la reserva queden negativos y aplica todo en una transacción.
+4. Registra `movement.edit` / `movement.delete` en auditoría con el antes → después.
 
 ### 16.3 Jornada de inventario diario
 1. Seleccionar categoría raíz accesible.
@@ -564,6 +636,20 @@ backup). Ver `docs/runbooks/releases-y-multicliente.md`.
 - `ADJUSTMENT`: delta con signo (positivo aumenta, negativo disminuye); requiere
   `canAdjustStock`.
 - El `currentStock` y el `StockMovement` se escriben siempre juntos en una transacción.
+
+**Corrección de movimientos manuales** (§14.3):
+- Solo aplica a movimientos con `source = null` y tipo `ENTRY`/`EXIT`/`ADJUSTMENT`. Los
+  auto-generados (cierres de jornada, apertura, ajuste de nivel) responden **400**: se
+  corrigen desde su propio flujo.
+- Se conserva el **signo por tipo**: `ENTRY` queda positivo, `EXIT` negativo y `ADJUSTMENT`
+  con el signo enviado. En productos de botella la cantidad se redondea a **entero**.
+- El efecto se aplica por **delta**, nunca recalculando: `stock += (nueva − anterior)`; al
+  eliminar, `stock −= anterior`. Ni el stock ni la reserva pueden quedar negativos.
+- En productos de botella la corrección mueve **solo la reserva** (y `currentStock` se
+  recalcula con `bottleStock`); el nivel de la botella abierta se corrige con "Ajuste Nivel".
+  Un `ADJUSTMENT` manual sobre un producto de botella no es corregible (400).
+- Si la **jornada del día del movimiento** está cerrada, la corrección se bloquea (**409**)
+  hasta reabrirla: el cierre debe seguir siendo una foto consistente.
 
 ### 17.2 Control por nivel de botella (módulo opcional)
 Aplica solo a productos cuya subcategoría tiene el slug bajo seguimiento
@@ -598,8 +684,16 @@ Con ≥1 botella en reserva **no** alerta. Un producto sin nivel registrado (`nu
 
 ### 17.4 Inventario diario
 - Una jornada por `(fecha, categoría)`.
-- Los ítems de botella **no** generan `StockMovement` ni modifican `currentStock`; solo
-  guardan snapshot de nivel/reserva.
+- **Esperado** = inicial + entradas registradas − salidas registradas, contando los
+  movimientos manuales del día: `ENTRY` y `ADJUSTMENT` positivo suman; `EXIT` y `ADJUSTMENT`
+  negativo restan. Las NR no entran en el esperado (se imputan al cerrar).
+- En la **apertura**, los ítems de botella solo guardan snapshot de nivel/reserva (no generan
+  `StockMovement`). En el **cierre**, si el estado enviado cambia el stock, se registra un
+  `ADJUSTMENT` con el delta y `source: daily_close_bottle`; al recerrar ese movimiento se
+  **edita** (idempotencia, igual que en los ítems numéricos). Ningún cambio de stock queda
+  sin rastro.
+- El formulario de cierre pre-llena las botellas con el **estado vivo del producto**, no con
+  el snapshot de la apertura.
 
 ### 17.5 Auditoría
 Retención de **180 días** (6 meses); ver §21.
@@ -610,6 +704,10 @@ Retención de **180 días** (6 meses); ver §21.
   válido; producto existente y activo; cantidad > 0 para entrada/salida de botella; stock
   suficiente en `EXIT` numérico; reserva suficiente en `EXIT` de botella; `BOTTLE_ADJUST`
   solo para productos bajo seguimiento y `ADJUSTMENT` numérico solo para productos normales.
+- **Corrección de movimientos** (`PATCH /api/movements/[id]`): hay que enviar `quantity`
+  y/o `notes` (si no, 400); `quantity` debe ser un número **finito y distinto de 0**;
+  `notes` string o `null`. Guardas adicionales: movimiento manual (400 si es auto-generado),
+  jornada del día no cerrada (409) y stock/reserva resultantes ≥ 0 (400).
 - **Inventario diario**: `date` con formato `YYYY-MM-DD`; conteos numéricos ≥ 0 que **admiten
   fracciones** (`parseCount` acepta `1/2`, `7 1/2`, `0.5`; vacío/NaN → null, negativos → 0);
   `bottleLevel` (si viene) debe ser una clave válida; `reserveBottles` entero ≥ 0.
@@ -622,7 +720,8 @@ Retención de **180 días** (6 meses); ver §21.
 ## 19. Manejo de errores
 
 - Las API routes responden con códigos HTTP explícitos: `400` (datos inválidos), `401` (sin
-  sesión), `403` (sin permiso o feature desactivada), `404` (no encontrado), `201` (creado).
+  sesión), `403` (sin permiso o feature desactivada), `404` (no encontrado), `409`
+  (conflicto de estado — p. ej. corregir un movimiento con la jornada cerrada), `201` (creado).
 - El cliente muestra los errores con *toasts* (`sonner`), leyendo el campo `error`.
 - **La auditoría nunca rompe la operación:** si falla el registro, hace `console.error` y la
   operación principal continúa (`audit.ts`).
@@ -649,7 +748,8 @@ Retención de **180 días** (6 meses); ver §21.
 
 - Módulo `src/lib/audit.ts` + tabla `AuditLog` + panel `/auditoria`.
 - Acciones registradas: `daily.open`, `daily.close`, `daily.reopen`, `daily.edit`,
-  `category.create`, `category.permissions.autocreate`, `access.denied`.
+  `movement.edit`, `movement.delete`, `category.create`,
+  `category.permissions.autocreate`, `access.denied`.
 - Cada registro guarda acción, tipo/ID de entidad, categoría, usuario, resumen legible y
   resultado (`success`/`denied`).
 - **Retención 6 meses (180 días)**, con purga probabilística (~5% de las escrituras) y purga
@@ -686,6 +786,8 @@ Ver `docs/runbooks/releases-y-multicliente.md` (fuente de verdad). Resumen:
   contraseñas. La retención real depende del ajuste del repositorio (Settings → Actions →
   Artifact and log retention ≥ 180 días).
 - **Lint/tipos:** `pnpm lint` y `pnpm build` (que corre `prisma generate` + `next build`).
+- **Antes de promover a un cliente:** correr las baterías E2E de §11.1 contra el dev server
+  en standalone (`e2e-full-suite` como regresión y la batería de la función tocada).
 - **Documentación:** al añadir una funcionalidad, actualizar este documento, el
   [MANUAL_DE_USUARIO.md](MANUAL_DE_USUARIO.md) y, si cambia la arquitectura, `CLAUDE.md`.
 
@@ -700,11 +802,20 @@ Ver `docs/runbooks/releases-y-multicliente.md` (fuente de verdad). Resumen:
 - **Autoriza por permiso efectivo**, no por rol literal.
 - Los **feature flags nuevos** deben cortar en las 3 capas (navegación, ruta, API).
 - El `slug` de categoría es la clave del contrato de permisos: **no** cambiarlo al renombrar.
-- No hay framework de tests unitarios: verificar con `pnpm build` + `pnpm lint` y pruebas E2E.
+- No hay framework de tests unitarios: verificar con `pnpm build` + `pnpm lint` y las
+  **baterías E2E de `prisma/`** (§11.1). Al añadir una función con reglas de stock, deje su
+  batería `prisma/test-<función>.ts` como regresión permanente.
 
 ## 25. Limitaciones actuales
 
-- **Sin tests automatizados** (unitarios/integración); la verificación es manual/E2E.
+- **Sin framework de tests ni CI de pruebas:** solo hay baterías E2E ejecutadas a mano
+  (§11.1), que además exigen dev server en standalone y BD local sembrada.
+- **`inventory:movements:edit` aún no existe en Nómina Xpress:** en modo integrado los
+  `ADMIN` no ven "Corregir movimientos" hasta que Nómina emita la clave en el JWT (los
+  `PROPRIETARY`/`SUPERADMIN` sí, por *fallback* de rol). Spec del cambio pendiente en
+  `docs/nomina-spec-permiso-movements-edit.md`.
+- **La corrección de movimientos no reabre jornadas:** con la jornada del día cerrada hay que
+  reabrirla manualmente antes de corregir (respuesta 409).
 - El control por botella aplica **solo** a la subcategoría con slug `cocteles`
   (`BOTTLE_TRACKING_SLUGS`); depende de que ese slug sea estable y no es configurable por
   cliente todavía.
@@ -734,7 +845,9 @@ Detectadas durante la revisión de la documentación y del código (estado a 202
 | 2 | `CLAUDE.md` §Permisos describía una API inexistente (`canManageProducts(role)`, `canDoStockCount(role, access)`). | **Corregido**: actualizado a la API real de 12 claves. |
 | 3 | `docs/GUIA_PERMISOS_GRANULARES.md` y `docs/NOMINA-SYNC-PERMISOS-CATEGORIAS.md` decían "10 claves"; el código tiene **12** (`products:hard_delete`, `audit:view`). | **Corregido**: ambos documentos actualizados; la guía quedó marcada como histórica. |
 | 4 | El módulo de control por botella evolucionó más allá de su spec de diseño (movimientos `ENTRY`/`EXIT`/`BOTTLE_ADJUST`, "Vaciar", `bottleStock`). | **Documentado**: los specs quedan como registro histórico; este documento refleja el código real. |
-| 5 | `clients/registry.json` marca `cucina-dei-fiori` como `active: false` (aprovisionamiento de su BD pendiente), mientras la doc de backups lo usa como ejemplo activo. | **Señalado** como estado actual. |
+| 5 | `clients/registry.json` marcaba `cucina-dei-fiori` como `active: false` (aprovisionamiento de su BD pendiente), mientras la doc de backups lo usaba como ejemplo activo. | **Resuelto**: el cliente ya está `active: true` en el registro. |
+| 6 | El panel de Auditoría (`ACTION_LABEL`/`ACTION_BADGE` en `src/app/(dashboard)/auditoria/page.tsx`) no incluye `movement.edit` ni `movement.delete`: esos eventos se registran y se listan, pero muestran la clave cruda y **no** aparecen en el desplegable de filtro por acción (que se construye a partir de ese mismo catálogo). | **Pendiente**: añadir ambas claves al catálogo. |
+| 7 | El encabezado de `prisma/e2e-full-suite.ts` indicaba ejecutarlo como `prisma/_e2e-full-suite.ts` (nombre con guion bajo que ya no existe). | **Corregido**: comentario actualizado al nombre real. |
 
 Si detecta nuevas discrepancias entre este documento y el código, prevalece el **código en
 `main`**; actualice este documento en el mismo cambio.

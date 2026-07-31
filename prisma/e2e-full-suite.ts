@@ -1,10 +1,10 @@
-// prisma/_e2e-full-suite.ts
+// prisma/e2e-full-suite.ts
 // Batería E2E completa contra el servidor de dev (http://localhost:3001).
 // Cubre: login, permisos por rol, movimientos, inventario diario (abrir/cerrar/
 // reabrir), reportes, auditoría, gestión de roles/usuarios, overrides sin
 // re-login, y perfil de usuario. Limpia todos los datos que crea al finalizar.
 //
-// Ejecutar con: npx tsx prisma/_e2e-full-suite.ts
+// Ejecutar con: npx tsx prisma/e2e-full-suite.ts   (requiere AUTH_MODE=standalone)
 
 import { PrismaClient } from "../src/generated/prisma";
 import { PrismaLibSql } from "@prisma/adapter-libsql";

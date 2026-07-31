@@ -10,6 +10,8 @@ Sistema web de gestión de inventario para cualquier negocio que maneje insumos 
 - `npx prisma generate` — Regenerar cliente Prisma tras cambios de schema
 - `npx prisma db push` — Aplicar schema a la DB (dev local)
 - `npx tsx prisma/seed.ts` — Insertar datos iniciales (categorías + usuarios demo por rol)
+- `npx tsx prisma/e2e-full-suite.ts` — Batería E2E de regresión (requiere `pnpm dev` con
+  `AUTH_MODE=standalone`); baterías por función en `prisma/test-*.ts`
 
 ## Credenciales demo (modo standalone)
 
@@ -64,7 +66,7 @@ El enforcement es **granular por acción**. Todos los helpers viven en
 porque el permiso se resuelve desde `inventoryPermissions` (arreglo de claves).
 
 ```typescript
-// 12 claves globales (objeto INV); cada una tiene su helper:
+// 13 claves globales (objeto INV); cada una tiene su helper:
 canCreateProducts(user)       // inventory:products:create
 canEditProducts(user)         // inventory:products:edit
 canDeleteProducts(user)       // inventory:products:delete       (activar/desactivar)
@@ -72,6 +74,7 @@ canHardDeleteProducts(user)   // inventory:products:hard_delete  (borrado perman
 canManageCategories(user)     // inventory:categories:manage
 canDoStockCount(user)         // inventory:stock:count           (movimientos e inventario diario)
 canAdjustStock(user)          // inventory:stock:adjust          (movimientos tipo ADJUSTMENT)
+canEditMovements(user)        // inventory:movements:edit        (corregir/eliminar movimientos manuales)
 canReopenDailyInventory(user) // inventory:daily:reopen
 canViewReports(user)          // inventory:reports:view
 canViewAudit(user)            // inventory:audit:view
@@ -90,6 +93,11 @@ así que operan todas las categorías aun sin la clave por categoría en el JWT;
 una categoría raíz nueva es visible/operable sin re-login (el listado se lee en vivo de
 la DB). En **standalone** —donde el catálogo local no tiene claves por categoría— se
 concede por rol/clave global.
+
+**`canEditMovements` es la excepción al fallback por rol:** concede por clave y, si no,
+**solo** a PROPRIETARY/SUPERADMIN. El ADMIN depende de la clave (para que Nómina pueda
+revocársela); en standalone viene en el preset de ADMIN y es revocable desde la UI de roles.
+Ver `docs/nomina-spec-permiso-movements-edit.md`.
 
 **Descartar/editar el conteo inicial de una jornada ABIERTA** se gobierna por la clave
 `:edit` de la categoría (misma que "Reabrir/editar"), vía `canDailyCategory(user, slug,
