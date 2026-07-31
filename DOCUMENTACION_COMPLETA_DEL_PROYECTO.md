@@ -735,6 +735,7 @@ Detectadas durante la revisión de la documentación y del código (estado a 202
 | 3 | `docs/GUIA_PERMISOS_GRANULARES.md` y `docs/NOMINA-SYNC-PERMISOS-CATEGORIAS.md` decían "10 claves"; el código tiene **12** (`products:hard_delete`, `audit:view`). | **Corregido**: ambos documentos actualizados; la guía quedó marcada como histórica. |
 | 4 | El módulo de control por botella evolucionó más allá de su spec de diseño (movimientos `ENTRY`/`EXIT`/`BOTTLE_ADJUST`, "Vaciar", `bottleStock`). | **Documentado**: los specs quedan como registro histórico; este documento refleja el código real. |
 | 5 | `clients/registry.json` marca `cucina-dei-fiori` como `active: false` (aprovisionamiento de su BD pendiente), mientras la doc de backups lo usa como ejemplo activo. | **Señalado** como estado actual. |
+| 6 | Los diccionarios `ACTION_LABEL`/`ACTION_BADGE` de `/auditoria` no incluían `movement.edit` ni `movement.delete` (registradas en `PATCH`/`DELETE` de `/api/movements/[id]`): se mostraban con la clave cruda y no aparecían en el filtro por acción. | **Corregido**: ambas claves añadidas a los dos diccionarios. |
 
 Si detecta nuevas discrepancias entre este documento y el código, prevalece el **código en
 `main`**; actualice este documento en el mismo cambio.
