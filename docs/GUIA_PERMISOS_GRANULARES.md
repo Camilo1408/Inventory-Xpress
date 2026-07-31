@@ -6,9 +6,9 @@
 > hizo; **no** son la referencia vigente. La descripción autoritativa y actualizada
 > de roles y permisos está en
 > [`DOCUMENTACION_COMPLETA_DEL_PROYECTO.md`](../DOCUMENTACION_COMPLETA_DEL_PROYECTO.md)
-> (§ Roles, permisos y restricciones). El contrato real hoy tiene **12 claves
-> globales** (esta guía menciona 10: faltan `inventory:products:hard_delete` e
-> `inventory:audit:view`, añadidas después).
+> (§ Roles, permisos y restricciones). El contrato real hoy tiene **13 claves
+> globales** (esta guía menciona 10: faltan `inventory:products:hard_delete`,
+> `inventory:audit:view` e `inventory:movements:edit`, añadidas después).
 
 > **Contexto:** Nómina Xpress (proyecto `restaurant-nomina`) ya fue actualizado. Ahora
 > emite en el JWT un arreglo `inventoryPermissions: string[]` con permisos granulares
