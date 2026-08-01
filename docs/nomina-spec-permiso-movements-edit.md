@@ -1,7 +1,9 @@
 # Spec para Nómina Xpress: clave de permiso `inventory:movements:edit`
 
 **Fecha:** 2026-07-26 · **Origen:** Inventory Xpress (PR de corrección de movimientos)
-**Estado:** pendiente de implementar en el repo de Nómina Xpress.
+**Estado:** ✅ **IMPLEMENTADO en Nómina Xpress** el 2026-07-26 (commit `67ce86a`), desplegado
+a producción de Fiori ese mismo día. Este documento queda como **registro histórico** del
+contrato acordado; no hay nada pendiente en él.
 
 ## Contexto
 
@@ -48,12 +50,18 @@ inventory:movements:edit
    `inventoryPermissions` del JWT compartido tras el siguiente login del usuario.
    No hay cambios de formato: es una clave más en el mismo arreglo.
 
-## Comportamiento transitorio (hasta implementar esto)
+## Cómo quedó implementado (verificado 2026-08-01)
 
-En Fiori (modo integrated):
-- `PROPRIETARY` y `SUPERADMIN` ya ven y usan "Corregir movimientos" (fallback por rol).
-- `ADMIN` **no** ve la función (la clave no viene en su JWT). No es un bug: queda
-  habilitada automáticamente cuando Nómina emita la clave y el admin re-loguee.
+Commit `67ce86a` de `restaurant-nomina`, presente en `main` y en `client/cucina-fiori`:
+
+- `INVENTORY_MOVEMENTS_EDIT: "inventory:movements:edit"` añadida a `src/lib/permission-keys.ts`.
+- Incluida en los presets base de **ADMIN** y **SUPERADMIN**, en `PERMISSION_GROUPS` y en
+  `PERMISSION_LABELS` (etiqueta "Corregir movimientos").
+- `PROPRIETARY` no la lleva en su preset, pero el inventario se la concede por *fallback* de
+  rol, así que también dispone de la función.
+
+**Único requisito operativo:** los usuarios deben **re-loguear** para que la clave viaje en
+su `inventoryPermissions`; hasta entonces un `ADMIN` con sesión vieja no verá la función.
 
 ## Verificación sugerida al implementar
 

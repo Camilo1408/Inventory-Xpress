@@ -22,7 +22,6 @@ Vigente y de consulta habitual.
 | [`BACKUP.md`](BACKUP.md) | Sistema de backups per-cliente: cómo funciona, secrets, restauración, prueba de integridad |
 | [`runbooks/releases-y-multicliente.md`](runbooks/releases-y-multicliente.md) | Flujo de releases (demo → clientes), alta de cliente nuevo, consolidación de ramas |
 | [`NOMINA-SYNC-PERMISOS-CATEGORIAS.md`](NOMINA-SYNC-PERMISOS-CATEGORIAS.md) | Contrato de sincronización de permisos por categoría con Nómina Xpress (lado inventario listo; pendiente en Nómina) |
-| [`nomina-spec-permiso-movements-edit.md`](nomina-spec-permiso-movements-edit.md) | Spec de la clave `inventory:movements:edit` que Nómina Xpress debe emitir para que los ADMIN puedan corregir movimientos (pendiente en Nómina) |
 
 ## Referencia histórica
 
@@ -33,6 +32,7 @@ documentos principales mandan).
 | Documento | Naturaleza |
 |-----------|-----------|
 | [`GUIA_PERMISOS_GRANULARES.md`](GUIA_PERMISOS_GRANULARES.md) | Guía de la migración a permisos granulares (ya implementada) |
+| [`nomina-spec-permiso-movements-edit.md`](nomina-spec-permiso-movements-edit.md) | Contrato de la clave `inventory:movements:edit` con Nómina (implementado el 2026-07-26) |
 | [`superpowers/specs/2026-06-25-control-licores-cocteles-design.md`](superpowers/specs/2026-06-25-control-licores-cocteles-design.md) | Diseño del control de licores por nivel de botella |
 | [`superpowers/plans/2026-06-25-control-licores-cocteles.md`](superpowers/plans/2026-06-25-control-licores-cocteles.md) | Plan de implementación de cócteles (la función evolucionó más allá del plan) |
 | [`superpowers/specs/2026-07-06-modelo-multicliente-diseno.md`](superpowers/specs/2026-07-06-modelo-multicliente-diseno.md) | Diseño del modelo multi-cliente + feature flags |

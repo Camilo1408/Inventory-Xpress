@@ -810,10 +810,10 @@ Ver `docs/runbooks/releases-y-multicliente.md` (fuente de verdad). Resumen:
 
 - **Sin framework de tests ni CI de pruebas:** solo hay baterías E2E ejecutadas a mano
   (§11.1), que además exigen dev server en standalone y BD local sembrada.
-- **`inventory:movements:edit` aún no existe en Nómina Xpress:** en modo integrado los
-  `ADMIN` no ven "Corregir movimientos" hasta que Nómina emita la clave en el JWT (los
-  `PROPRIETARY`/`SUPERADMIN` sí, por *fallback* de rol). Spec del cambio pendiente en
-  `docs/nomina-spec-permiso-movements-edit.md`.
+- **Los cambios de permisos en integrado exigen re-login:** la clave
+  `inventory:movements:edit` ya la emite Nómina Xpress (desde el 2026-07-26), pero un `ADMIN`
+  que no haya vuelto a iniciar sesión seguirá sin ver "Corregir movimientos" hasta que su JWT
+  se renueve.
 - **La corrección de movimientos no reabre jornadas:** con la jornada del día cerrada hay que
   reabrirla manualmente antes de corregir (respuesta 409).
 - El control por botella aplica **solo** a la subcategoría con slug `cocteles`

@@ -22,9 +22,9 @@
 - **Solo las categorías RAÍZ tienen claves.** Las subcategorías heredan: el permiso
   de la raíz (p. ej. `barra`) cubre todas sus subcategorías (Licores, Cócteles, etc.).
 - Las claves globales del módulo (hoy **13**: `inventory:view`, `inventory:products:*`,
-  `inventory:audit:view`, `inventory:movements:edit`, etc.) no cambian con este contrato.
-  La única pendiente de alta en Nómina es `inventory:movements:edit` — ver
-  [`nomina-spec-permiso-movements-edit.md`](nomina-spec-permiso-movements-edit.md).
+  `inventory:audit:view`, `inventory:movements:edit`, etc.) no cambian con este contrato y
+  ya están todas dadas de alta en Nómina. Lo pendiente es únicamente lo que describe este
+  documento: las claves **por categoría** (`inventory:daily:<slug>:*`).
 
 ## Lo que el inventario ya ofrece (dos vías)
 
