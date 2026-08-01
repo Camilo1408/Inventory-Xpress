@@ -10,9 +10,9 @@
 // Uso: node scripts/check-client-branches.mjs
 // Requiere un checkout con los refs remotos disponibles (git fetch previo).
 
-import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { loadRegistry } from "./lib/registry.mjs";
+import { tryGit, failFast } from "./lib/git.mjs";
 
 /**
  * Analiza el estado de las ramas puntero. Puro: recibe los datos de git ya resueltos.
@@ -47,30 +47,6 @@ export function analyzeBranches({ registry, refs }) {
     );
   }
   return { problems, report };
-}
-
-/**
- * Ejecuta git sin lanzar en códigos de salida no-cero: devuelve el status real
- * junto con stdout/stderr para que el llamador decida qué códigos son
- * significativos (p.ej. 1 = "no ancestro") y cuáles son errores reales.
- */
-function tryGit(args) {
-  try {
-    const stdout = execFileSync("git", args, { encoding: "utf8" });
-    return { status: 0, stdout: stdout.trim(), stderr: "" };
-  } catch (err) {
-    return {
-      status: typeof err.status === "number" ? err.status : 1,
-      stdout: "",
-      stderr: (err.stderr ?? "").toString().trim(),
-    };
-  }
-}
-
-/** Aborta el script entero: usado cuando un comando git falla por una razón real (no un resultado esperado). */
-function failFast(message, ref) {
-  console.error(`::error::No se pudo completar la verificación. ${message} (ref: ${ref})`);
-  process.exit(1);
 }
 
 /** Resuelve el estado real de una rama contra origin/main. */

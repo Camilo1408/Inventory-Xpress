@@ -10,6 +10,7 @@
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { loadRegistry, clientBySlug } from "./lib/registry.mjs";
+import { tryGit, failFast } from "./lib/git.mjs";
 
 /**
  * Resuelve a qué rama hay que promover. Puro.
@@ -44,12 +45,20 @@ function main() {
   git(["fetch", "origin", "--prune"]);
   const mainSha = git(["rev-parse", "refs/remotes/origin/main"]);
 
+  const remoteRef = `refs/remotes/origin/${branch}`;
+  const logResult = tryGit(["log", "--oneline", `${remoteRef}..refs/remotes/origin/main`]);
   let pending;
-  try {
-    pending = git(["log", "--oneline", `refs/remotes/origin/${branch}..refs/remotes/origin/main`]);
-  } catch {
+  if (logResult.status === 128) {
+    // "unknown revision" es lo que git devuelve cuando el ref no existe en el remoto.
     console.error(`::error::La rama "${branch}" no existe en el remoto. Créala con: git push origin main:${branch}`);
     process.exit(1);
+  } else if (logResult.status !== 0) {
+    failFast(
+      `"git log" salió con código ${logResult.status} (se esperaba 0 o 128). stderr: ${logResult.stderr || "(vacío)"}`,
+      remoteRef
+    );
+  } else {
+    pending = logResult.stdout;
   }
 
   if (pending === "") {
@@ -68,7 +77,15 @@ function main() {
   }
 
   // GitHub rechaza el push si no es fast-forward. No usamos --force nunca.
-  execFileSync("git", ["push", "origin", `${mainSha}:refs/heads/${branch}`], { stdio: "inherit" });
+  const pushResult = tryGit(["push", "origin", `${mainSha}:refs/heads/${branch}`]);
+  if (pushResult.status !== 0) {
+    console.error(
+      `::error::El push a "${branch}" fue rechazado. stderr: ${pushResult.stderr || "(vacío)"} ` +
+      `Un rechazo por non-fast-forward significa que la rama del cliente tiene commits propios (drift): revísala con ` +
+      `check-client-branches.mjs antes de reintentar.`
+    );
+    process.exit(1);
+  }
   console.error(`\nListo. Vercel desplegará ${client.vercelProject} desde ${branch}.`);
   console.error(`Verifica en https://${client.domain} antes de dar por cerrado el release.`);
 }
