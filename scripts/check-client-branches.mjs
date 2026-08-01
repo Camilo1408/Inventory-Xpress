@@ -49,29 +49,69 @@ export function analyzeBranches({ registry, refs }) {
   return { problems, report };
 }
 
-function git(args) {
-  return execFileSync("git", args, { encoding: "utf8" }).trim();
+/**
+ * Ejecuta git sin lanzar en códigos de salida no-cero: devuelve el status real
+ * junto con stdout/stderr para que el llamador decida qué códigos son
+ * significativos (p.ej. 1 = "no ancestro") y cuáles son errores reales.
+ */
+function tryGit(args) {
+  try {
+    const stdout = execFileSync("git", args, { encoding: "utf8" });
+    return { status: 0, stdout: stdout.trim(), stderr: "" };
+  } catch (err) {
+    return {
+      status: typeof err.status === "number" ? err.status : 1,
+      stdout: "",
+      stderr: (err.stderr ?? "").toString().trim(),
+    };
+  }
+}
+
+/** Aborta el script entero: usado cuando un comando git falla por una razón real (no un resultado esperado). */
+function failFast(message, ref) {
+  console.error(`::error::No se pudo completar la verificación. ${message} (ref: ${ref})`);
+  process.exit(1);
 }
 
 /** Resuelve el estado real de una rama contra origin/main. */
 function inspectBranch(branch) {
   const remoteRef = `refs/remotes/origin/${branch.replace(/^refs\/heads\//, "")}`;
-  let exists = true;
-  try {
-    git(["rev-parse", "--verify", "--quiet", remoteRef]);
-  } catch {
-    exists = false;
-  }
-  if (!exists) return { exists: false, isAncestorOfMain: false, behind: 0 };
 
-  let isAncestorOfMain = true;
-  try {
-    execFileSync("git", ["merge-base", "--is-ancestor", remoteRef, "refs/remotes/origin/main"], { stdio: "ignore" });
-  } catch {
-    isAncestorOfMain = false;
+  const verify = tryGit(["rev-parse", "--verify", "--quiet", remoteRef]);
+  if (verify.status === 1) {
+    return { exists: false, isAncestorOfMain: false, behind: 0 };
   }
-  const behind = Number(git(["rev-list", "--count", `${remoteRef}..refs/remotes/origin/main`]));
-  return { exists, isAncestorOfMain, behind };
+  if (verify.status !== 0) {
+    failFast(
+      `"git rev-parse --verify --quiet" salió con código ${verify.status} (se esperaba 0 o 1). stderr: ${verify.stderr || "(vacío)"}`,
+      remoteRef
+    );
+  }
+
+  const ancestorCheck = tryGit(["merge-base", "--is-ancestor", remoteRef, "refs/remotes/origin/main"]);
+  let isAncestorOfMain;
+  if (ancestorCheck.status === 0) {
+    isAncestorOfMain = true;
+  } else if (ancestorCheck.status === 1) {
+    isAncestorOfMain = false;
+  } else {
+    failFast(
+      `"git merge-base --is-ancestor" salió con código ${ancestorCheck.status} (se esperaba 0 o 1). stderr: ${ancestorCheck.stderr || "(vacío)"}. ` +
+      `Una causa frecuente es un historial truncado (clone shallow); en CI, usa "fetch-depth: 0" en el checkout.`,
+      remoteRef
+    );
+  }
+
+  const countResult = tryGit(["rev-list", "--count", `${remoteRef}..refs/remotes/origin/main`]);
+  if (countResult.status !== 0) {
+    failFast(
+      `"git rev-list --count" salió con código ${countResult.status}. stderr: ${countResult.stderr || "(vacío)"}`,
+      remoteRef
+    );
+  }
+  const behind = Number(countResult.stdout);
+
+  return { exists: true, isAncestorOfMain, behind };
 }
 
 function main() {
