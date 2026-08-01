@@ -277,7 +277,8 @@ Plantilla en `.env.example`. Copiar a `.env` (o `.env.local`) y completar:
 | `NOMINA_APP_URL` | integrated | URL de Nómina Xpress (server-side, redirects de login/logout). |
 | `NEXT_PUBLIC_NOMINA_APP_URL` | integrated | URL de Nómina Xpress (client-side, enlaces). |
 | `BLOB_READ_WRITE_TOKEN` | opcional | Token de Vercel Blob (subida de imágenes). |
-| `ROOT_DOMAIN` | prod | Dominio raíz para la cookie compartida entre subdominios. |
+| `AUTH_COOKIE_DOMAIN` | integrated/prod | Dominio de la cookie de sesión compartida con Nómina (ej. `.cucinadeifiori.com`). Lo lee `src/lib/auth.config.ts`. |
+| `APP_TIMEZONE` | opcional | Zona horaria IANA del negocio para el cálculo de la jornada (def. `America/Bogota`). |
 | `NEXT_PUBLIC_BRAND_NAME` | opcional | Nombre de marca mostrado (def. `Inventario`). |
 | `NEXT_PUBLIC_BRAND_LOGO` | opcional | URL del logo de marca. |
 | `NEXT_PUBLIC_FEATURE_COCKTAILS` | opcional | `true` activa el control por nivel de botella (**OFF** por defecto). |
