@@ -1,6 +1,6 @@
 // scripts/test-promote-client.mjs
 // Tests del resolutor de promoción (puro, no ejecuta git ni toca el remoto).
-// Ejecutar: node scripts/test-promote-client.mjs
+// Ejecutar desde la raíz del repositorio (usa rutas relativas): node scripts/test-promote-client.mjs
 import { resolvePromotion } from "./promote-client.mjs";
 
 let pass = 0, fail = 0;

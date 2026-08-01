@@ -1,6 +1,6 @@
 // scripts/test-check-client-branches.mjs
 // Tests del analizador de drift de ramas puntero (puro, sin ejecutar git).
-// Ejecutar: node scripts/test-check-client-branches.mjs
+// Ejecutar desde la raíz del repositorio (usa rutas relativas): node scripts/test-check-client-branches.mjs
 import { analyzeBranches } from "./check-client-branches.mjs";
 
 let pass = 0, fail = 0;

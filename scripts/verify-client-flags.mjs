@@ -18,6 +18,13 @@ import { FEATURE_ENV } from "./lib/features.mjs";
 
 /**
  * Compara los flags del entorno contra los declarados en el registro. Puro.
+ *
+ * El registro es la fuente de verdad de qué ramas `client/*` existen: una rama
+ * `client/<algo>` cuyo slug no está en clients/registry.json NO se salta, falla.
+ * Saltarla en silencio es justo el escenario que esta guarda existe para impedir
+ * (Production Branch mal escrita, o cliente borrado del registro con su proyecto
+ * Vercel todavía vivo, desplegando sin que nadie verifique sus flags).
+ *
  * @returns {{skipped: boolean, reason?: string, slug?: string, problems: string[]}}
  */
 export function checkFlags({ registry, ref, env }) {
@@ -27,7 +34,14 @@ export function checkFlags({ registry, ref, env }) {
   const slug = ref.slice("client/".length);
   const client = clientBySlug(registry, slug);
   if (!client) {
-    return { skipped: true, reason: `"${slug}" no está en clients/registry.json`, problems: [] };
+    return {
+      skipped: false,
+      slug,
+      problems: [
+        `la rama "${ref}" no corresponde a ningún cliente en clients/registry.json. ` +
+          `Revisa la Production Branch configurada en Vercel, o si el cliente fue dado de baja del registro, desconecta su proyecto Vercel.`,
+      ],
+    };
   }
 
   const problems = [];
@@ -49,21 +63,35 @@ export function checkFlags({ registry, ref, env }) {
 }
 
 function main() {
-  const registry = loadRegistry();
-  const result = checkFlags({
-    registry,
-    ref: process.env.VERCEL_GIT_COMMIT_REF,
-    env: process.env,
-  });
+  // Resolvemos la rama y decidimos si aplica ANTES de cargar el registro: un
+  // clients/registry.json con un error de forma no debe reventar el build de
+  // ramas para las que esta verificación sería un no-op de todos modos (demo,
+  // ramas de feature, builds locales sin VERCEL_GIT_COMMIT_REF).
+  const ref = process.env.VERCEL_GIT_COMMIT_REF;
+  if (!ref || !ref.startsWith("client/")) {
+    console.error(`verify-client-flags: sin verificación — la rama "${ref ?? "(sin rama)"}" no es de cliente.`);
+    return;
+  }
+
+  let registry;
+  try {
+    registry = loadRegistry();
+  } catch (e) {
+    console.error(`::error::verify-client-flags: no se pudo cargar clients/registry.json: ${e.message}`);
+    process.exit(1);
+    return;
+  }
+
+  const result = checkFlags({ registry, ref, env: process.env });
 
   if (result.skipped) {
     console.error(`verify-client-flags: sin verificación — ${result.reason}.`);
     return;
   }
   if (result.problems.length > 0) {
-    console.error(`::error::Los feature flags de "${result.slug}" no coinciden con clients/registry.json:`);
+    console.error(`::error::verify-client-flags: la rama "${ref}" no pasa la verificación:`);
     for (const p of result.problems) console.error(`::error::  - ${p}`);
-    console.error("::error::Corrige las Environment Variables del proyecto en Vercel, o el registro, y vuelve a desplegar.");
+    console.error("::error::Corrige las Environment Variables del proyecto en Vercel, o clients/registry.json, y vuelve a desplegar.");
     process.exit(1);
   }
   console.error(`verify-client-flags: OK — flags de "${result.slug}" coinciden con el registro.`);

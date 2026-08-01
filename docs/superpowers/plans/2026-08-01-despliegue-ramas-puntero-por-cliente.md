@@ -28,7 +28,7 @@ Datos comprobados contra la API de Vercel y los repos, no contra la documentaci�
 | Proyecto Vercel | Repo | Production Branch hoy | Debe quedar en |
 |---|---|---|---|
 | `inventory-xpress-demo` | `Camilo1408/Inventory-Xpress` | `main` | `main` (sin cambio) |
-| `inventory-xpress-fiori` | `Camilo1408/Inventory-Xpress` | **`main`** ⚠️ | **`client/cucina-fiori`** |
+| `inventory-xpress-fiori` | `Camilo1408/Inventory-Xpress` | **`main`** ⚠️ | **`client/cucina-dei-fiori`** |
 | `cucina-fiori` (Nómina, referencia) | `Camilo1408/Nomina-Xpress` | `client/cucina-fiori` | — |
 
 - Los dominios de ambos proyectos tienen `gitBranch: null`, o sea **siguen a la Production Branch**: al repuntar la rama, el dominio se mueve solo. No hay que tocar DNS.

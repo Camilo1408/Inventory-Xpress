@@ -1,6 +1,6 @@
 // scripts/test-client-registry.mjs
 // Tests de scripts/lib/registry.mjs y scripts/lib/features.mjs (puros, sin I/O de red).
-// Ejecutar: node scripts/test-client-registry.mjs
+// Ejecutar desde la raíz del repositorio (usa rutas relativas): node scripts/test-client-registry.mjs
 import { readFileSync } from "node:fs";
 import { validateRegistry, clientBySlug, loadRegistry } from "./lib/registry.mjs";
 import { FEATURE_ENV, KNOWN_FEATURES } from "./lib/features.mjs";

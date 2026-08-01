@@ -689,7 +689,9 @@ Ver `docs/runbooks/releases-y-multicliente.md` (fuente de verdad). Resumen:
 - La **passphrase de backups** es irrecuperable si se pierde: guárdela en un gestor de
   contraseñas. La retención real depende del ajuste del repositorio (Settings → Actions →
   Artifact and log retention ≥ 180 días).
-- **Lint/tipos:** `pnpm lint` y `pnpm build` (que corre `prisma generate` + `next build`).
+- **Lint/tipos:** `pnpm lint` y `pnpm build` (que corre `scripts/verify-client-flags.mjs` +
+  `prisma generate` + `next build`; el primer paso falla el build si es una rama de cliente
+  y sus feature flags no coinciden con `clients/registry.json`).
 - **Documentación:** al añadir una funcionalidad, actualizar este documento, el
   [MANUAL_DE_USUARIO.md](MANUAL_DE_USUARIO.md) y, si cambia la arquitectura, `CLAUDE.md`.
 

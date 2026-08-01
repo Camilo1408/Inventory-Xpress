@@ -4,6 +4,16 @@ Inventory Xpress se despliega **una instancia por cliente**, todas desde el mism
 (`main`). La diferencia entre clientes es **configuración** (env vars + feature flags),
 nunca código.
 
+> **⚠️ Estado real a día de hoy: el cutover NO se ha ejecutado.** Las ramas `client/<slug>`
+> todavía no existen en el remoto y el proyecto Vercel de Cucina dei Fiori
+> (`inventory-xpress-fiori`) sigue con su Production Branch en `main`. Eso significa que,
+> **hoy, cada merge a `main` despliega directamente a producción de Fiori** — exactamente lo
+> que este modelo busca evitar. Hasta que se ejecute el cutover (Task 8 del plan de
+> implementación), todo lo que sigue en este documento describe el modelo **destino**, no el
+> vigente. Antes de promover o de asumir aislamiento entre clientes, confirma el estado real
+> con `node scripts/check-client-branches.mjs` y con la Production Branch configurada en cada
+> proyecto Vercel.
+
 ## Modelo: ramas puntero
 
 | Rama | Qué es | Quién despliega desde ella |
@@ -63,16 +73,45 @@ funciones en producción sin darse cuenta.
 
 Cambiar un flag requiere **redeploy** (las `NEXT_PUBLIC_*` se hornean en el bundle).
 
+**Orden obligatorio al activar una feature para un cliente:** primero se setea la env var
+correspondiente en el proyecto Vercel del cliente, **y solo después** se declara la feature
+en `clients/registry.json` y se promueve. Al revés (declarar primero y promover sin la env
+var puesta), la promoción rompe el build del cliente: `verify-client-flags.mjs` lo detecta
+y hace fallar el build (falla segura), pero deja la producción del cliente congelada en el
+commit anterior hasta que se corrija el orden.
+
 Para añadir una feature nueva: agregarla a `FEATURE_ENV` en `scripts/lib/features.mjs` y
 leerla en `src/lib/config.ts`. El test `scripts/test-client-registry.mjs` falla si un lado
 se desincroniza del otro.
+
+Un cliente con `active: false` en `clients/registry.json` queda **fuera** de las
+verificaciones de drift (`check-client-branches.mjs`) y del preflight de backup
+(`backup-preflight.mjs`). Dar de baja a un cliente ahí no apaga nada por sí solo: hay que
+desconectar también su proyecto Vercel (o al menos quitarle el dominio y las env vars) para
+que de verdad deje de servir tráfico.
 
 ## Estado actual
 
 | Cliente | Slug | Rama | Proyecto Vercel | Modo | Features |
 |---|---|---|---|---|---|
-| Cucina dei Fiori | `cucina-dei-fiori` | `client/cucina-dei-fiori` | `inventory-xpress-fiori` | integrated | cocktails, dailyInventory |
+| Cucina dei Fiori | `cucina-dei-fiori` | `client/cucina-dei-fiori` ⚠️ pendiente de crear — hoy el proyecto sigue desplegando desde `main` | `inventory-xpress-fiori` | integrated | cocktails, dailyInventory |
 | Demo | `demo` | `main` | `inventory-xpress-demo` | standalone | cocktails, dailyInventory |
+
+## Configuración de Vercel por proyecto
+
+Esto es configuración **manual del proyecto en Vercel, no versionada** — no vive en este
+repo, así que conviene auditarla de vez en cuando contra esta tabla:
+
+| Proyecto Vercel | Production Branch | Ignored Build Step |
+|---|---|---|
+| `inventory-xpress-demo` | `main` | *(sin definir)* — hace falta uno que salte los builds de ramas `client/*`: `if [ "$VERCEL_GIT_COMMIT_REF" = "main" ]; then exit 1; else exit 0; fi` |
+| `inventory-xpress-fiori` | `client/cucina-dei-fiori` (destino — hoy sigue en `main`, ver aviso al inicio del documento) | `if [ "$VERCEL_GIT_COMMIT_REF" = "client/cucina-dei-fiori" ]; then exit 1; else exit 0; fi` |
+
+Sin el Ignored Build Step del demo, el proyecto `inventory-xpress-demo` construye también
+las ramas `client/*` como preview. En ese preview, `verify-client-flags.mjs` compararía los
+flags del entorno del demo contra lo declarado para *otro* cliente — el día que exista un
+cliente con menos features encendidas, eso da un build rojo por un motivo que no tiene nada
+que ver con el código. Configurar el Ignored Build Step del demo evita ese falso positivo.
 
 ## Alta de un cliente nuevo
 

@@ -16,8 +16,21 @@ export function tryGit(args) {
     const stdout = execFileSync("git", args, { encoding: "utf8" });
     return { status: 0, stdout: stdout.trim(), stderr: "" };
   } catch (err) {
+    if (typeof err.status !== "number") {
+      // No hay código de salida real: git nunca llegó a correr (p.ej. ENOENT si
+      // no está en el PATH) o el proceso murió por una señal. Confundir esto con
+      // un status=1 "esperado" (p.ej. "no ancestro") le daría al operador un
+      // diagnóstico falso ("la rama no existe, créala con..."). Lo tratamos como
+      // el fallo real que es, con un status que ningún llamador interpreta como
+      // código esperado (0, 1, 128).
+      return {
+        status: -1,
+        stdout: "",
+        stderr: `git no se pudo ejecutar: ${err.code ?? err.message ?? "error desconocido"}`,
+      };
+    }
     return {
-      status: typeof err.status === "number" ? err.status : 1,
+      status: err.status,
       stdout: "",
       stderr: (err.stderr ?? "").toString().trim(),
     };
@@ -28,4 +41,7 @@ export function tryGit(args) {
 export function failFast(message, ref) {
   console.error(`::error::No se pudo completar la verificación. ${message} (ref: ${ref})`);
   process.exit(1);
+  // Defensa en profundidad: si alguna vez algo envuelve/mockea process.exit,
+  // el flujo no debe seguir como si failFast hubiera devuelto normalmente.
+  throw new Error(`failFast: ${message} (ref: ${ref})`);
 }

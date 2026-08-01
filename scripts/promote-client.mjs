@@ -61,6 +61,26 @@ function main() {
     pending = logResult.stdout;
   }
 
+  // Un log vacío ("nada que promover") también sale así si alguien commiteó directo
+  // sobre la rama del cliente y main no avanzó desde entonces: el cliente correría
+  // main+X en producción sin que este script lo note. Antes de confiar en el log,
+  // confirmamos que la rama sigue siendo ANCESTRO de main (misma disciplina de
+  // códigos de salida que check-client-branches.mjs: 0 = ancestro, 1 = no lo es,
+  // cualquier otro = fallo real de git).
+  const ancestorCheck = tryGit(["merge-base", "--is-ancestor", remoteRef, "refs/remotes/origin/main"]);
+  if (ancestorCheck.status === 1) {
+    console.error(
+      `::error::La rama "${branch}" tiene commits propios que no están en main (divergió). ` +
+      `Las ramas puntero no llevan código propio: revísala con node scripts/check-client-branches.mjs antes de promover.`
+    );
+    process.exit(1);
+  } else if (ancestorCheck.status !== 0) {
+    failFast(
+      `"git merge-base --is-ancestor" salió con código ${ancestorCheck.status} (se esperaba 0 o 1). stderr: ${ancestorCheck.stderr || "(vacío)"}`,
+      remoteRef
+    );
+  }
+
   if (pending === "") {
     console.error(`"${client.displayName}" ya está en el último main (${mainSha.slice(0, 7)}). Nada que promover.`);
     return;

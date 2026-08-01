@@ -1,6 +1,6 @@
 // scripts/test-verify-client-flags.mjs
 // Tests de la verificación de flags en build (pura, sin tocar el entorno real).
-// Ejecutar: node scripts/test-verify-client-flags.mjs
+// Ejecutar desde la raíz del repositorio (usa rutas relativas): node scripts/test-verify-client-flags.mjs
 import { checkFlags } from "./verify-client-flags.mjs";
 
 let pass = 0, fail = 0;
@@ -26,8 +26,11 @@ ok("ref main se salta",
   checkFlags({ registry, ref: "main", env: {} }).skipped === true);
 ok("rama de feature se salta",
   checkFlags({ registry, ref: "feat/lo-que-sea", env: {} }).skipped === true);
-ok("rama client/ sin cliente en el registro se salta con motivo",
-  checkFlags({ registry, ref: "client/fantasma", env: {} }).skipped === true);
+const fantasma = checkFlags({ registry, ref: "client/fantasma", env: {} });
+ok("rama client/ sin cliente en el registro FALLA (ya no se salta)", fantasma.skipped === false);
+ok("el problema explica que la rama no corresponde a ningún cliente del registro",
+  fantasma.problems.length === 1 && fantasma.problems[0].includes("no corresponde a ningún cliente"),
+  fantasma.problems.join("; "));
 
 console.log("\n── cuándo exige ──");
 ok("client/acme con ambos flags en true pasa",
