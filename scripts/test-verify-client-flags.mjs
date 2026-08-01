@@ -31,6 +31,9 @@ ok("rama client/ sin cliente en el registro FALLA (ya no se salta)", fantasma.sk
 ok("el problema explica que la rama no corresponde a ningún cliente del registro",
   fantasma.problems.length === 1 && fantasma.problems[0].includes("no corresponde a ningún cliente"),
   fantasma.problems.join("; "));
+ok("el problema menciona también la causa de alta reciente sin promover",
+  fantasma.problems[0].includes("recién dado de alta"),
+  fantasma.problems[0]);
 
 console.log("\n── cuándo exige ──");
 ok("client/acme con ambos flags en true pasa",

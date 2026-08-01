@@ -660,15 +660,20 @@ Retención de **180 días** (6 meses); ver §21.
 
 ## 22. Despliegue y producción
 
-Ver `docs/runbooks/releases-y-multicliente.md` (fuente de verdad). Resumen:
+Ver `docs/runbooks/releases-y-multicliente.md` (fuente de verdad, incluye el estado al día
+de hoy). Resumen del **modelo destino**:
 
 - **Un solo código base (`main`) y una rama puntero por cliente.** `main` despliega
-  automáticamente **solo** al demo (`inventory-xpress-demo`). Cada cliente tiene una rama
+  automáticamente **solo** al demo (`inventory-xpress-demo`). Cada cliente tendrá una rama
   `client/<slug>` sin código propio, que solo avanza por fast-forward desde `main`
-  (`node scripts/promote-client.mjs <slug> --si`); su proyecto Vercel tiene esa rama como
-  Production Branch. Regla de oro: ningún cambio llega a un cliente sin pasar antes por demo
-  y sin una promoción explícita. `scripts/check-client-branches.mjs` verifica en CI que
-  ninguna rama de cliente haya divergido.
+  (`node scripts/promote-client.mjs <slug> --si`); su proyecto Vercel tendrá esa rama como
+  Production Branch. Regla de oro: ningún cambio debe llegar a un cliente sin pasar antes por
+  demo y sin una promoción explícita. `scripts/check-client-branches.mjs` verifica en CI que
+  ninguna rama de cliente haya divergido. **Este modelo todavía no está en vigor para
+  Cucina dei Fiori**: falta ejecutar el cutover manual (crear `client/cucina-dei-fiori` y
+  repuntar la Production Branch de `inventory-xpress-fiori`), así que hoy cada merge a
+  `main` sigue desplegando directo a su producción. Antes de asumir aislamiento entre
+  clientes, confirma el estado real en el runbook.
 - **Feature flags por cliente:** `NEXT_PUBLIC_FEATURE_COCKTAILS` y
   `NEXT_PUBLIC_FEATURE_DAILY_INV` OFF por defecto; cada proyecto Vercel los enciende si
   aplica. Cambiarlos requiere rebuild.

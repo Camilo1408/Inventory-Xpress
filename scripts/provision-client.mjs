@@ -64,13 +64,17 @@ async function main() {
   const secretName = `TURSO_TOKEN_${slug.toUpperCase().replace(/-/g, "_")}`;
 
   console.log("\n─── LISTO. Pasos manuales restantes ───");
-  console.log(`1. Crear la rama puntero del cliente (sin código propio, solo avanza por fast-forward):`);
-  console.log(`     git fetch origin && git push origin origin/main:refs/heads/${branch}`);
-  console.log(`2. Agregar la entrada en clients/registry.json:`);
+  console.log(`1. Agregar la entrada en clients/registry.json, por PR normal a main:`);
   console.log(`     { "slug": "${slug}", "displayName": "...", "domain": "...",`);
   console.log(`       "vercelProject": "inventory-xpress-${slug}", "tursoDatabase": "${dbName}",`);
   console.log(`       "branch": "${branch}", "features": [], "active": true }`);
   console.log(`     Las features válidas hoy son: cocktails, dailyInventory.`);
+  console.log(`     Mergea este PR a main ANTES del paso 2: la rama puntero se crea desde main,`);
+  console.log(`     así que si main aún no incluye la entrada, el primer build de este cliente`);
+  console.log(`     sale rojo (verify-client-flags.mjs falla porque "${slug}" no está en el registro).`);
+  console.log(`2. Con la entrada ya en main, crear la rama puntero del cliente (sin código propio,`);
+  console.log(`   solo avanza por fast-forward):`);
+  console.log(`     git fetch origin && git push origin origin/main:refs/heads/${branch}`);
   console.log(`3. Crear el proyecto Vercel enlazado al repo con Production Branch = ${branch}.`);
   console.log(`4. Setear env vars en ese proyecto (target Production):`);
   console.log(`     TURSO_DATABASE_URL=${url}`);

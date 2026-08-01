@@ -39,7 +39,8 @@ export function checkFlags({ registry, ref, env }) {
       slug,
       problems: [
         `la rama "${ref}" no corresponde a ningún cliente en clients/registry.json. ` +
-          `Revisa la Production Branch configurada en Vercel, o si el cliente fue dado de baja del registro, desconecta su proyecto Vercel.`,
+          `Revisa la Production Branch configurada en Vercel, o si el cliente fue dado de baja del registro, desconecta su proyecto Vercel. ` +
+          `También puede ser un cliente recién dado de alta cuya entrada en el registro todavía no está en el main desde el que se creó esta rama: se resuelve promoviendo la rama a un main que ya la incluya.`,
       ],
     };
   }
@@ -82,12 +83,12 @@ function main() {
     return;
   }
 
+  // A partir de aquí `ref` ya pasó el filtro de arriba (empieza por "client/"),
+  // así que checkFlags() nunca devuelve result.skipped === true en este camino:
+  // ese caso solo ocurre cuando se llama a checkFlags() directamente (como
+  // hacen los tests) con un ref que no es de cliente.
   const result = checkFlags({ registry, ref, env: process.env });
 
-  if (result.skipped) {
-    console.error(`verify-client-flags: sin verificación — ${result.reason}.`);
-    return;
-  }
   if (result.problems.length > 0) {
     console.error(`::error::verify-client-flags: la rama "${ref}" no pasa la verificación:`);
     for (const p of result.problems) console.error(`::error::  - ${p}`);

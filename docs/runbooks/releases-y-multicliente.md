@@ -78,7 +78,13 @@ correspondiente en el proyecto Vercel del cliente, **y solo después** se declar
 en `clients/registry.json` y se promueve. Al revés (declarar primero y promover sin la env
 var puesta), la promoción rompe el build del cliente: `verify-client-flags.mjs` lo detecta
 y hace fallar el build (falla segura), pero deja la producción del cliente congelada en el
-commit anterior hasta que se corrija el orden.
+commit anterior hasta que se corrija el orden. Nota: mientras la env var ya está encendida
+y la feature todavía no está declarada en el registro, el cliente queda en una ventana
+abierta — cualquier otra promoción de ese mismo cliente durante ese interín también falla
+el build, ahora por el chequeo en la dirección contraria (`verify-client-flags.mjs` ve un
+flag "en true" que el registro no declara). Cierra esa ventana en el mismo release: declara
+la feature y promueve tan pronto como sea posible después de setear la env var, no la dejes
+a medias entre un release y el siguiente.
 
 Para añadir una feature nueva: agregarla a `FEATURE_ENV` en `scripts/lib/features.mjs` y
 leerla en `src/lib/config.ts`. El test `scripts/test-client-registry.mjs` falla si un lado
@@ -120,8 +126,10 @@ TURSO_API_TOKEN=<token> TURSO_ORG=<org> node scripts/provision-client.mjs <slug>
 ```
 
 El script crea la BD Turso, aplica el schema, corre el seed e imprime el checklist completo
-(rama puntero, entrada del registro, proyecto Vercel, env vars, Ignored Build Step, DNS,
-secret de backup). Al terminar, verificar con:
+(entrada del registro mergeada a main, rama puntero, proyecto Vercel, env vars, Ignored
+Build Step, DNS, secret de backup — en ese orden: la entrada debe estar en main antes de
+crear la rama puntero desde ese main, o el primer build del cliente sale rojo). Al terminar,
+verificar con:
 
 ```bash
 node scripts/check-client-branches.mjs

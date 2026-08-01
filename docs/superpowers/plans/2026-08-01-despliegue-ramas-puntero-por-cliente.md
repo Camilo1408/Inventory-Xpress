@@ -2,6 +2,14 @@
 
 > **Para agentes:** SUB-SKILL REQUERIDA: usar superpowers:subagent-driven-development (recomendado) o superpowers:executing-plans para ejecutar este plan tarea por tarea. Los pasos usan checkbox (`- [ ]`) para seguimiento.
 
+> **Nota (revisión final, 2026-08-01):** el código embebido en este plan — en particular el
+> de la Tarea 2 (`checkFlags`/`main()` de `verify-client-flags.mjs` y su test) — refleja el
+> estado **al momento de planificar**. La implementación final incorporó correcciones de una
+> revisión posterior (p. ej.: una rama `client/<slug>` cuyo slug no está en el registro ahora
+> **falla** el build en vez de saltarse en silencio). Este documento es un registro histórico
+> del plan, no se reescribe con esas correcciones. La fuente de verdad del comportamiento
+> real es el código en `scripts/`, no lo transcrito aquí.
+
 **Goal:** Que cada cliente de Inventory Xpress despliegue desde su propia rama puntero `client/<slug>` en vez de `main`, con sus funcionalidades activadas/desactivadas por feature flags declarados en `clients/registry.json` y verificados en cada build.
 
 **Architecture:** Se replica el modelo ya probado en Nómina Xpress: `main` es la única rama de desarrollo y solo despliega al demo; cada cliente tiene una rama `client/<slug>` que **no contiene código propio** y solo avanza por fast-forward desde `main`. Toda diferencia entre clientes vive en env vars de Vercel. Sobre ese modelo se añaden tres guardas que Nómina no tiene: un validador de que ninguna rama de cliente divergió, una verificación en tiempo de build de que los flags del entorno coinciden con lo declarado en el registro, y un Ignored Build Step que evita builds inútiles.
