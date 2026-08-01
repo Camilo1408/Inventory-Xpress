@@ -662,10 +662,13 @@ Retención de **180 días** (6 meses); ver §21.
 
 Ver `docs/runbooks/releases-y-multicliente.md` (fuente de verdad). Resumen:
 
-- **Un solo código base (`main`).** El proyecto **demo** (`inventory-xpress-demo`)
-  auto-despliega `main`; los clientes reales **no** reciben auto-deploy: se promueve el mismo
-  build ya verificado en demo. Regla de oro: ningún cambio llega a un cliente en producción
-  sin pasar antes por demo.
+- **Un solo código base (`main`) y una rama puntero por cliente.** `main` despliega
+  automáticamente **solo** al demo (`inventory-xpress-demo`). Cada cliente tiene una rama
+  `client/<slug>` sin código propio, que solo avanza por fast-forward desde `main`
+  (`node scripts/promote-client.mjs <slug> --si`); su proyecto Vercel tiene esa rama como
+  Production Branch. Regla de oro: ningún cambio llega a un cliente sin pasar antes por demo
+  y sin una promoción explícita. `scripts/check-client-branches.mjs` verifica en CI que
+  ninguna rama de cliente haya divergido.
 - **Feature flags por cliente:** `NEXT_PUBLIC_FEATURE_COCKTAILS` y
   `NEXT_PUBLIC_FEATURE_DAILY_INV` OFF por defecto; cada proyecto Vercel los enciende si
   aplica. Cambiarlos requiere rebuild.
