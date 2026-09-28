@@ -142,3 +142,6 @@ integrated llegan firmados en el JWT de Nómina Xpress.
 6. **El logout en modo integrated redirige al endpoint de logout de Nomina Xpress.**
 7. **Prisma 7**: no hay `url` en `schema.prisma`, va en `prisma.config.ts`. El cliente requiere adapter.
 8. **Next.js 16**: el middleware es `src/proxy.ts`, no `middleware.ts` en la raíz.
+9. **Las ramas `client/<slug>` son punteros de release: nunca reciben commits propios.**
+   Solo avanzan por fast-forward desde `main` (`scripts/promote-client.mjs`). Toda diferencia
+   entre clientes va por env var/feature flag declarado en `clients/registry.json`.

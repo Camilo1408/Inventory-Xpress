@@ -6,6 +6,7 @@
       "domain": "inventario.cucinadeifiori.com",
       "vercelProject": "inventory-xpress-fiori",
       "tursoDatabase": "inventory-xpress-fiori-camilo1408",
+      "branch": "client/cucina-dei-fiori",
       "features": ["cocktails", "dailyInventory"],
       "active": true
     },
@@ -15,6 +16,7 @@
       "domain": "inventory-xpress-demo.vercel.app",
       "vercelProject": "inventory-xpress-demo",
       "tursoDatabase": "inventory-xpress-demo-camilo1408",
+      "branch": "main",
       "features": ["cocktails", "dailyInventory"],
       "active": true
     }
