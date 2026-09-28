@@ -6,6 +6,7 @@ import { audit } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/lib/config";
 import { businessDayRange } from "@/lib/dates";
+import { openingStocks } from "@/lib/daily-opening";
 
 interface FinalCountItem {
   productId: string;
@@ -127,6 +128,10 @@ export async function PATCH(
     const note = `Corrección de conteo inicial (jornada abierta) por ${userName} — inventario diario ${inventory.date}`;
 
     await prisma.$transaction(async (tx) => {
+      // Stock de inicio del día para los productos NUEVOS: su conteo inicial se
+      // concilia contra él, igual que en la apertura (ver openingStocks).
+      const newIds = initialCounts.map((ic) => ic.productId).filter((pid) => productById.has(pid) && !itemByProduct.has(pid));
+      const opening = await openingStocks(newIds, inventory.date, tx);
       for (const ic of initialCounts) {
         const prod = productById.get(ic.productId);
         // Ignora productos que no son de esta categoría, están inactivos, o son de
@@ -158,11 +163,11 @@ export async function PATCH(
           await tx.product.update({ where: { id: ic.productId }, data: { currentStock: { increment: delta } } });
         } else {
           // ── Producto NUEVO (creado durante la jornada): se suma al conteo ──────
-          // Reconcilia el stock igual que la apertura: delta = conteo − stock actual.
+          // Reconcilia el stock igual que la apertura: delta = conteo − stock de inicio del día.
           const created = await tx.dailyInventoryItem.create({
             data: { dailyInventoryId: id, productId: ic.productId, initialCount: ic.initialCount },
           });
-          const delta = ic.initialCount - prod.currentStock;
+          const delta = ic.initialCount - (opening.get(ic.productId) ?? prod.currentStock);
           if (delta !== 0) {
             await tx.stockMovement.create({
               data: {
