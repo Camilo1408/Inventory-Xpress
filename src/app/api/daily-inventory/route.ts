@@ -6,6 +6,7 @@ import { audit } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/lib/config";
 import { businessToday, businessDayRange } from "@/lib/dates";
+import { openingStocks } from "@/lib/daily-opening";
 
 interface CreateItem {
   productId: string;
@@ -204,12 +205,15 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Reconciliación de apertura: si el conteo inicial difiere del stock del sistema,
-  // se ajusta el stock al valor contado dejando constancia en el historial global.
+  // Reconciliación de apertura: si el conteo inicial difiere del stock con el que
+  // arrancó el día, se ajusta el stock al valor contado dejando constancia en el
+  // historial global. Se compara contra el stock de INICIO del día (no el actual):
+  // los movimientos ya registrados hoy entran al esperado por su cuenta.
   await prisma.$transaction(async (tx) => {
+    const opening = await openingStocks(inventory.items.map((i) => i.productId), date, tx);
     for (const item of inventory.items) {
       if (isBottleTrackedSlug(loaded.slugByProduct.get(item.productId))) continue; // ítems de botella no tocan stock
-      const delta = item.initialCount - item.product.currentStock;
+      const delta = item.initialCount - (opening.get(item.productId) ?? item.product.currentStock);
       if (delta === 0) continue;
 
       const userNote = noteByProduct.get(item.productId);

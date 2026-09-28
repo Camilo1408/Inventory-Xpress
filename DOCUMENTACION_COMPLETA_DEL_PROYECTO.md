@@ -545,8 +545,14 @@ permisos globales y entra por el gate de acceso como cualquier rol con permisos.
 
 ### 16.3 Jornada de inventario diario
 1. Seleccionar categoría raíz accesible.
-2. **Abrir**: conteo inicial (ajusta stock con `source: daily_open_adjust` si difiere).
-3. Registrar movimientos durante el día (opcional).
+2. **Abrir**: conteo inicial = existencias al **inicio del día** (lo que quedó ayer). Se
+   concilia contra el stock de inicio del día —`currentStock` menos los movimientos manuales
+   (`source: null`) registrados desde el inicio del día de negocio, ver
+   `src/lib/daily-opening.ts`— y ajusta con `source: daily_open_adjust` si difiere. No se
+   concilia contra `currentStock`: un ingreso registrado antes de abrir se contaría doble en
+   el esperado (o el ajuste lo borraría).
+3. Registrar movimientos durante el día (opcional). **Esperado = inicial + todos los
+   movimientos manuales del día**, registrados antes o después de abrir la jornada.
 4. **Cerrar**: conteo final + entradas/salidas no registradas (con motivo y hora); se
    generan los movimientos `daily_nr_entry/exit/close_adjust`.
 5. **Reabrir** (opcional): requiere `canReopenDailyInventory`; deja `reopenReason`.
