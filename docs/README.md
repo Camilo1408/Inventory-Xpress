@@ -20,7 +20,7 @@ Vigente y de consulta habitual.
 | Documento | Tema |
 |-----------|------|
 | [`BACKUP.md`](BACKUP.md) | Sistema de backups per-cliente: cómo funciona, secrets, restauración, prueba de integridad |
-| [`runbooks/releases-y-multicliente.md`](runbooks/releases-y-multicliente.md) | Flujo de releases (demo → clientes), alta de cliente nuevo, consolidación de ramas |
+| [`runbooks/releases-y-multicliente.md`](runbooks/releases-y-multicliente.md) | Modelo de ramas puntero, flujo de release (demo → promoción a clientes), feature flags, alta de cliente nuevo |
 | [`NOMINA-SYNC-PERMISOS-CATEGORIAS.md`](NOMINA-SYNC-PERMISOS-CATEGORIAS.md) | Contrato de sincronización de permisos por categoría con Nómina Xpress (lado inventario listo; pendiente en Nómina) |
 
 ## Referencia histórica
