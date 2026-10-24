@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { formatStock } from "@/lib/utils";
 import { BottleLevelSelector, ReserveCounter, BottleLevelBadge, ShotsCopeoToggle, ShotsCopeoBadge } from "@/components/inventario/bottle-level-selector";
+import { ProductJumpSearch, useProductJump, type JumpOption } from "@/components/inventario/product-jump-search";
 import { isBottleTrackedSlug, isBottleLevel, isShotsCopeoTrackedSlug, emptyOpenBottle, type BottleLevel } from "@/lib/bottle";
 import { sanitizeNumericInput, parseNumericValue, numericFieldProps } from "@/lib/numeric";
 import {
@@ -414,6 +415,11 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
   const [discDialog, setDiscDialog] = useState(false);
   const [discRows, setDiscRows] = useState<DiscRow[]>([]);
   const [discNotes, setDiscNotes] = useState<Record<string, string>>({});
+  const { highlightedId, jumpTo } = useProductJump();
+  const jumpOptions = useMemo<JumpOption[]>(
+    () => allProducts.map((p) => ({ id: p.id, name: p.name, group: categoryName(p) })),
+    [allProducts]
+  );
 
   const [levels, setLevels] = useState<Record<string, BottleLevel>>(() =>
     Object.fromEntries(
@@ -587,6 +593,8 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
           </Button>
         </div>
 
+        <ProductJumpSearch options={jumpOptions} onSelect={jumpTo} />
+
         {Object.entries(byCategory).map(([cat, products]) => (
           <div key={cat} className="bg-white border border-slate-200 rounded-lg overflow-hidden">
             <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
@@ -600,7 +608,11 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
             {products.every(productIsBottle) ? (
               <div className="divide-y divide-slate-100">
                 {products.map((p) => (
-                  <div key={p.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+                  <div
+                    key={p.id}
+                    data-product-row={p.id}
+                    className={`px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between transition-colors duration-500 ${highlightedId === p.id ? "bg-blue-100" : ""}`}
+                  >
                     <span className="font-medium text-slate-800 text-sm">{p.name}</span>
                     <div className="flex flex-wrap items-center gap-4">
                       <div className="flex flex-wrap items-center gap-2">
@@ -647,7 +659,8 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
                     return (
                       <div
                         key={p.id}
-                        className={`px-4 py-3 flex items-center justify-between gap-3 ${isEmpty ? "bg-red-50/40" : ""}`}
+                        data-product-row={p.id}
+                        className={`px-4 py-3 flex items-center justify-between gap-3 transition-colors duration-500 ${highlightedId === p.id ? "bg-blue-100" : isEmpty ? "bg-red-50/40" : ""}`}
                       >
                         <div className="min-w-0">
                           <p className="font-medium text-slate-800 text-sm truncate">{p.name}</p>
@@ -664,6 +677,7 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
                         </div>
                         <Input
                           {...numericFieldProps}
+                          data-jump-focus
                           className={`w-24 shrink-0 text-right tabular-nums ${isEmpty ? "border-red-300 focus-visible:ring-red-400" : ""}`}
                           value={counts[p.id] ?? ""}
                           onChange={(e) => setCounts((prev) => ({ ...prev, [p.id]: sanitizeNumericInput(e.target.value) }))}
@@ -687,7 +701,11 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
                     {products.map((p) => {
                       const isEmpty = !counts[p.id] || counts[p.id] === "0" || counts[p.id] === "";
                       return (
-                        <tr key={p.id} className={isEmpty ? "bg-red-50/40" : ""}>
+                        <tr
+                          key={p.id}
+                          data-product-row={p.id}
+                          className={`transition-colors duration-500 ${highlightedId === p.id ? "bg-blue-100" : isEmpty ? "bg-red-50/40" : ""}`}
+                        >
                           <td className="px-4 py-2.5 font-medium text-slate-800">
                             <div className="flex items-center gap-1.5">
                               <span>{p.name}</span>
@@ -706,6 +724,7 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
                           <td className="px-4 py-2.5 text-right">
                             <Input
                               {...numericFieldProps}
+                              data-jump-focus
                               className={`w-28 ml-auto text-right tabular-nums ${isEmpty ? "border-red-300 focus-visible:ring-red-400" : ""}`}
                               value={counts[p.id] ?? ""}
                               onChange={(e) => setCounts((prev) => ({ ...prev, [p.id]: sanitizeNumericInput(e.target.value) }))}
@@ -911,6 +930,11 @@ function OpenView({
   );
   const itemProductIds = useMemo(
     () => new Set(inventory.items.map((i) => i.productId)),
+    [inventory.items]
+  );
+  const { highlightedId, jumpTo } = useProductJump();
+  const jumpOptions = useMemo<JumpOption[]>(
+    () => inventory.items.map((i) => ({ id: i.productId, name: i.product.name, group: categoryName(i.product) })),
     [inventory.items]
   );
 
@@ -1244,6 +1268,8 @@ function OpenView({
       )}
 
       <form onSubmit={handleClose} className="space-y-4">
+        <ProductJumpSearch options={jumpOptions} onSelect={jumpTo} />
+
         {categoryCards.map((cat) => cat.isBottle ? (
           <div key={cat.name} className="bg-white border border-slate-200 rounded-lg overflow-hidden">
             <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
@@ -1254,7 +1280,11 @@ function OpenView({
             </div>
             <div className="divide-y divide-slate-100">
               {cat.bottleItems.map((i) => (
-                <div key={i.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+                <div
+                  key={i.id}
+                  data-product-row={i.productId}
+                  className={`px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between transition-colors duration-500 ${highlightedId === i.productId ? "bg-blue-100" : ""}`}
+                >
                   <span className="font-medium text-slate-800 text-sm">{i.product.name}</span>
                   <div className="flex flex-wrap items-center gap-4">
                     <div className="flex flex-wrap items-center gap-2">
@@ -1307,7 +1337,12 @@ function OpenView({
             return (
               <div
                 key={r.item.id}
-                className={`rounded-xl border p-4 ${finalIsEmpty ? "border-red-200 bg-red-50/30" : "border-slate-200 bg-white"}`}
+                data-product-row={r.item.productId}
+                className={`rounded-xl border p-4 transition-colors duration-500 ${
+                  highlightedId === r.item.productId
+                    ? "border-blue-300 bg-blue-50"
+                    : finalIsEmpty ? "border-red-200 bg-red-50/30" : "border-slate-200 bg-white"
+                }`}
               >
                 <div className="mb-3">
                   <p className="font-medium text-slate-800 truncate">{r.item.product.name}</p>
@@ -1365,6 +1400,7 @@ function OpenView({
                   <label className="block text-xs font-medium text-slate-800 mb-1">Conteo real *</label>
                   <Input
                     {...numericFieldProps}
+                    data-jump-focus
                     className={`w-full text-right tabular-nums ${finalIsEmpty ? "border-red-300 focus-visible:ring-red-400" : ""}`}
                     value={r.finalStr}
                     onChange={(e) =>
@@ -1418,7 +1454,12 @@ function OpenView({
                 const finalIsEmpty = r.finalStr.trim() === "" || r.finalStr === "0";
                 return (
                   <Fragment key={r.item.id}>
-                    <tr className={finalIsEmpty ? "bg-red-50/30" : "hover:bg-slate-50"}>
+                    <tr
+                      data-product-row={r.item.productId}
+                      className={`transition-colors duration-500 ${
+                        highlightedId === r.item.productId ? "bg-blue-100" : finalIsEmpty ? "bg-red-50/30" : "hover:bg-slate-50"
+                      }`}
+                    >
                     <td className="px-4 py-2.5 font-medium text-slate-800">
                       <div className="flex items-center gap-1.5">
                         <span>{r.item.product.name}</span>
@@ -1467,6 +1508,7 @@ function OpenView({
                     <td className="px-3 py-2.5 text-right">
                       <Input
                         {...numericFieldProps}
+                        data-jump-focus
                         className={`w-24 ml-auto text-right tabular-nums ${
                           finalIsEmpty ? "border-red-300 focus-visible:ring-red-400" : ""
                         }`}
