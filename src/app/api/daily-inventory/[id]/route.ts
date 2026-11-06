@@ -7,25 +7,34 @@ import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/lib/config";
 import { businessDayRange } from "@/lib/dates";
 import { openingStocks } from "@/lib/daily-opening";
+import { z } from "zod";
+import { parseBody, parseValue } from "@/lib/api-body";
 
-interface FinalCountItem {
-  productId: string;
-  finalCount: number;
-  unregisteredEntry?: number | null;
-  unregisteredExit?: number | null;
-  entryReason?: string | null; // motivo de la entrada no registrada
-  entryTime?: string | null;   // hora de ingreso "HH:MM"
-  bottleLevel?: string | null;
-  reserveBottles?: number | null;
-  shotsCopeo?: boolean;
-}
+// Los arreglos se validan en cada acción (después del permiso), como antes.
+const patchDailySchema = z.object({
+  action: z.string().nullish(),
+  reason: z.string().nullish(),
+  finalCounts: z.unknown().optional(),
+  initialCounts: z.unknown().optional(),
+});
 
-interface PatchBody {
-  action?: string;
-  reason?: string;
-  finalCounts?: unknown;
-  initialCounts?: unknown;
-}
+const initialCountSchema = z.object({ productId: z.string(), initialCount: z.number() });
+
+const finalCountSchema = z.object({
+  productId: z.string(),
+  finalCount: z.number().optional(),
+  unregisteredEntry: z.number().nullish(),
+  unregisteredExit: z.number().nullish(),
+  entryReason: z.string().nullish(),
+  entryTime: z.string().nullish(),
+  bottleLevel: z.string().nullish(),
+  reserveBottles: z.number().nullish(),
+  shotsCopeo: z.boolean().nullish(),
+});
+
+const discardSchema = z.object({ reason: z.string().nullish() });
+
+type FinalCountItem = z.output<typeof finalCountSchema>;
 
 /** PATCH /api/daily-inventory/[id]
  *  body { finalCounts: [...] }                        → cerrar inventario (permiso :close de la categoría)
@@ -44,7 +53,9 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const body = await req.json() as PatchBody;
+  const parsed = await parseBody(req, patchDailySchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   // Resolver la categoría del registro para el gate por categoría.
   // Registros legados (categoryId NULL) caen a los gates globales previos.
@@ -92,11 +103,11 @@ export async function PATCH(
     if (!Array.isArray(body.initialCounts) || body.initialCounts.length === 0) {
       return NextResponse.json({ error: "initialCounts es requerido y debe tener al menos un elemento" }, { status: 400 });
     }
-    const initialCounts = body.initialCounts as { productId: string; initialCount: number }[];
+    const parsedCounts = parseValue(z.array(initialCountSchema), body.initialCounts, "Datos inválidos en initialCounts");
+    if (!parsedCounts.ok) return parsedCounts.response;
+    const initialCounts = parsedCounts.data;
 
-    const invalid = initialCounts.some(
-      (ic) => typeof ic.productId !== "string" || typeof ic.initialCount !== "number" || ic.initialCount < 0
-    );
+    const invalid = initialCounts.some((ic) => ic.initialCount < 0);
     if (invalid) return NextResponse.json({ error: "Datos inválidos en initialCounts" }, { status: 400 });
 
     // Categoría raíz de la jornada + subcategorías: define qué productos "pertenecen"
@@ -257,7 +268,9 @@ export async function PATCH(
     return NextResponse.json({ error: "finalCounts es requerido y debe tener al menos un elemento" }, { status: 400 });
   }
 
-  const finalCounts = body.finalCounts as FinalCountItem[];
+  const parsedFinal = parseValue(z.array(finalCountSchema), body.finalCounts, "Datos inválidos en finalCounts");
+  if (!parsedFinal.ok) return parsedFinal.response;
+  const finalCounts = parsedFinal.data;
 
   const inventory = await prisma.dailyInventory.findUnique({
     where: { id },
@@ -360,7 +373,9 @@ export async function PATCH(
       // Auto-cálculo: la diferencia que reste tras aplicar las NR manuales se
       // atribuye al lado que el usuario NO ingresó — sobrante → entrada,
       // faltante → salida — de modo que el conteo real quede explicado sin residual.
-      const gap = fc.finalCount - (expected + e - x);
+      // Ítem que no es de botella: el guarda de arriba exige que finalCount sea número.
+      const counted = fc.finalCount ?? 0;
+      const gap = counted - (expected + e - x);
       if (!hasEntry && gap > 0) e += gap;
       if (!hasExit  && gap < 0) x += -gap;
 
@@ -370,7 +385,7 @@ export async function PATCH(
       const shotsCopeoEligible = shotsCopeoEligibleIds.has(fc.productId);
       const shotsCopeo = shotsCopeoEligible ? !!fc.shotsCopeo : false;
 
-      return { item, finalCount: fc.finalCount, e, x, entryReason, entryTime, shotsCopeo, shotsCopeoEligible };
+      return { item, finalCount: counted, e, x, entryReason, entryTime, shotsCopeo, shotsCopeoEligible };
     });
 
   // Las entradas no registradas exigen motivo y hora de ingreso (trazabilidad).
@@ -598,8 +613,8 @@ export async function DELETE(
 
   let reason = "";
   try {
-    const body = await req.json() as { reason?: string };
-    reason = body.reason?.trim() ?? "";
+    const parsedDiscard = discardSchema.safeParse(await req.json());
+    reason = parsedDiscard.success ? (parsedDiscard.data.reason?.trim() ?? "") : "";
   } catch {
     // body ausente/no-JSON: se trata como reason vacío, validado abajo
   }

@@ -3,6 +3,17 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { canCreateProducts, canAccessInventory } from "@/lib/permissions";
 import { isBottleLevel } from "@/lib/bottle";
+import { z } from "zod";
+import { parseBody } from "@/lib/api-body";
+
+const createProductSchema = z.object({
+  name: z.string().nullish(),
+  categoryId: z.string().nullish(),
+  unit: z.string().nullish(),
+  minStock: z.number().min(0, "El stock mínimo no puede ser negativo").nullish(),
+  imageUrl: z.string().nullish(),
+  alertBottleLevel: z.string().nullish(),
+});
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -39,14 +50,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
   }
 
-  const body = await req.json() as {
-    name?: string;
-    categoryId?: string;
-    unit?: string;
-    minStock?: number;
-    imageUrl?: string;
-    alertBottleLevel?: string | null;
-  };
+  const parsed = await parseBody(req, createProductSchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   if (!body.name?.trim() || !body.categoryId || !body.unit?.trim()) {
     return NextResponse.json({ error: "Nombre, categoría y unidad son requeridos" }, { status: 400 });

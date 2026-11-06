@@ -1,0 +1,65 @@
+# Compuerta de calidad (Plan de Calidad, I-1): todo PR a main y todo push a main
+# pasan por tipos, lint, pruebas, build y auditoría de dependencias de producción.
+# Es el mismo esquema que el CI de Nómina Xpress. Cuando esté en verde de forma
+# estable, la protección de `main` lo exige para poder hacer merge.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  calidad:
+    name: Tipos, lint, pruebas y build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Sin secretos: el CI nunca toca una base real. El build y las pruebas usan una
+      # SQLite vacía y un secreto de relleno que solo vive en este job.
+      TURSO_DATABASE_URL: file:./ci.db
+      NEXTAUTH_SECRET: ci-only-not-a-real-secret-000000000000
+      NEXTAUTH_URL: http://localhost:3001
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "pnpm"
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Generar cliente Prisma
+        run: pnpm exec prisma generate
+
+      - name: Tipos (tsc)
+        run: pnpm exec tsc --noEmit
+
+      - name: Lint (ESLint, 0 errores)
+        run: pnpm exec eslint .
+
+      - name: Pruebas (Vitest)
+        run: pnpm test
+
+      - name: Build de producción
+        run: pnpm build
+
+      - name: Dependencias de producción sin vulnerabilidades críticas
+        run: pnpm audit --prod --audit-level critical

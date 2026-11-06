@@ -5,6 +5,18 @@ import { canManageUsers } from "@/lib/permissions";
 import { isBaseRole, sanitizePermissionKeys } from "@/lib/roles";
 import bcrypt from "bcryptjs";
 import { config } from "@/lib/config";
+import { z } from "zod";
+import { parseBody } from "@/lib/api-body";
+
+const updateUserSchema = z.object({
+  name: z.string().optional(),
+  role: z.string().optional(),
+  active: z.boolean().optional(),
+  customRoleId: z.string().nullish(),
+  permsGrant: z.unknown().optional(),
+  permsRevoke: z.unknown().optional(),
+  password: z.string().nullish(),
+});
 
 function isStandalone() {
   return config.features.userManagement;
@@ -20,12 +32,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   const { id } = await params;
-  const body = await req.json() as {
-    name?: string; role?: string; active?: boolean;
-    customRoleId?: string | null;
-    permsGrant?: unknown; permsRevoke?: unknown;
-    password?: string;
-  };
+  const parsed = await parseBody(req, updateUserSchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   // Salvaguarda: no permitir que el último SUPERADMIN activo pierda el rol o se desactive.
   if (body.role !== undefined || body.active === false) {

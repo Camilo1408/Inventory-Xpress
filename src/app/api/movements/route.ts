@@ -3,6 +3,19 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { canDoStockCount, canAdjustStock, canAccessInventory } from "@/lib/permissions";
 import { isBottleTrackedSlug, isBottleLevel, bottleStock, addBottleEntry } from "@/lib/bottle";
+import { z } from "zod";
+import { parseBody } from "@/lib/api-body";
+
+// z.number() rechaza NaN e Infinity (p. ej. 1e400): antes lo cuidaba un guarda manual.
+const createMovementSchema = z.object({
+  productId: z.string().nullish(),
+  type: z.string().nullish(),
+  quantity: z.number({ error: "Cantidad inválida" }).optional(),
+  notes: z.string().nullish(),
+  // Solo para BOTTLE_ADJUST (licores de cócteles)
+  bottleLevel: z.string().nullish(),
+  reserveBottles: z.number({ error: "Reserva inválida" }).optional(),
+});
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -58,15 +71,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
   }
 
-  const body = await req.json() as {
-    productId?: string;
-    type?: string;
-    quantity?: number;
-    notes?: string;
-    // Solo para BOTTLE_ADJUST (licores de cócteles)
-    bottleLevel?: string | null;
-    reserveBottles?: number;
-  };
+  const parsed = await parseBody(req, createMovementSchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   if (!body.productId || !body.type) {
     return NextResponse.json({ error: "productId y type son requeridos" }, { status: 400 });

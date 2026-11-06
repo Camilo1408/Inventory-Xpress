@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     // Cliente Prisma generado: código minificado/autogenerado (se regenera con
     // `prisma generate`), no es código fuente nuestro y no debe lintearse.
     "src/generated/**",
+    // Copias del repo que crean las sesiones de Claude Code (worktrees): no son fuente.
+    ".claude/**",
   ]),
 ]);
 

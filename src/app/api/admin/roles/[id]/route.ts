@@ -4,6 +4,15 @@ import { prisma } from "@/lib/db";
 import { canManageUsers } from "@/lib/permissions";
 import { sanitizePermissionKeys } from "@/lib/roles";
 import { config } from "@/lib/config";
+import { z } from "zod";
+import { parseBody } from "@/lib/api-body";
+
+const updateRoleSchema = z.object({
+  name: z.string().optional(),
+  description: z.string().optional(),
+  permissions: z.unknown().optional(),
+  active: z.boolean().optional(),
+});
 
 function isStandalone() {
   return config.features.userManagement;
@@ -20,12 +29,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const existing = await prisma.role.findUnique({ where: { id }, select: { id: true } });
   if (!existing) return NextResponse.json({ error: "Rol no encontrado" }, { status: 404 });
 
-  const body = await req.json() as {
-    name?: string;
-    description?: string;
-    permissions?: unknown;
-    active?: boolean;
-  };
+  const parsed = await parseBody(req, updateRoleSchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   const role = await prisma.role.update({
     where: { id },

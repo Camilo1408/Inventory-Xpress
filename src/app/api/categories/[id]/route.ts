@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { canManageCategories } from "@/lib/permissions";
+import { z } from "zod";
+import { parseBody } from "@/lib/api-body";
+
+const updateCategorySchema = z.object({
+  name: z.string().optional(),
+  active: z.boolean().optional(),
+});
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -11,7 +18,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   const { id } = await params;
-  const body = await req.json() as { name?: string; active?: boolean };
+  const parsed = await parseBody(req, updateCategorySchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   const category = await prisma.category.update({
     where: { id },
