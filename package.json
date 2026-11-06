@@ -7,7 +7,8 @@
     "build": "node scripts/verify-client-flags.mjs && prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
@@ -53,6 +54,7 @@
     "prisma": "^7.10.1",
     "tailwindcss": "^4.3.4",
     "tsx": "^4.23.15",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "4.1.12"
   }
 }

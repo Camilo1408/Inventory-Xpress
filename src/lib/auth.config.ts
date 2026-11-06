@@ -1,5 +1,6 @@
 import type { NextAuthConfig } from "next-auth";
 import { config } from "./config";
+import { applyNominaSession } from "./session-check";
 
 // Cookie de sesión compartida entre subdominios (modo integrado con Nómina Xpress).
 // En integrated NO emitimos la cookie (no hay login aquí): solo la LEEMOS. Para leer la
@@ -52,6 +53,9 @@ export const authConfig: NextAuthConfig = {
         token.tenantId = (user as { tenantId: string }).tenantId;
         token.inventoryPermissions = (user as { inventoryPermissions?: string[] }).inventoryPermissions ?? [];
       }
+      // Integrated: la sesión la emite Nómina. Le preguntamos si sigue vigente y por
+      // los permisos actuales (I-H1b); null cierra la sesión. Ver session-check.ts.
+      if (config.authMode === "integrated") return applyNominaSession(token);
       return token;
     },
     async session({ session, token }) {
