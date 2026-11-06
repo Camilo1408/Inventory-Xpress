@@ -45,6 +45,12 @@ pnpm dev                          # servidor de desarrollo en http://localhost:3
 | `pnpm seed` | Datos iniciales (categorías + usuarios demo) |
 | `npx prisma generate` | Regenerar el cliente Prisma tras cambios de schema |
 | `npx prisma db push` | Aplicar el schema a la BD local |
+| `npx tsx prisma/e2e-full-suite.ts` | Batería E2E de regresión (requiere `pnpm dev` en standalone) |
+
+No hay framework de tests: la verificación se hace con `pnpm lint`, `pnpm build` y las
+baterías E2E de `prisma/` (`e2e-full-suite.ts`, `test-daily-inventory.ts`,
+`test-movement-edit.ts`, `test-bottle-entry.ts`). Detalle en
+[DOCUMENTACION_COMPLETA_DEL_PROYECTO.md §11.1](DOCUMENTACION_COMPLETA_DEL_PROYECTO.md#111-baterías-e2e-prismats).
 
 ## Stack
 
