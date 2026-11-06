@@ -28,10 +28,18 @@ const sharedSessionCookie = AUTH_COOKIE_DOMAIN
     }
   : undefined;
 
+// Duración de la sesión: IGUAL a la de Nómina Xpress (12 h, renovada cada hora).
+// Aunque aquí no hay login en modo integrated, Auth.js vuelve a firmar el JWT y a
+// emitir la cookie (con el Domain compartido) cada vez que se consulta la sesión.
+// Con el default de 30 días, el inventario extendía la vida de la cookie de Nómina
+// y anulaba su revocación de sesiones (hallazgo I-H1 del Plan de Calidad).
+export const SESSION_MAX_AGE_SECONDS = 12 * 60 * 60;
+export const SESSION_UPDATE_AGE_SECONDS = 60 * 60;
+
 // Config edge-safe: solo callbacks JWT, sin providers que usen DB
 export const authConfig: NextAuthConfig = {
   secret: process.env.NEXTAUTH_SECRET,
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt", maxAge: SESSION_MAX_AGE_SECONDS, updateAge: SESSION_UPDATE_AGE_SECONDS },
   cookies: sharedSessionCookie,
   providers: [],
   pages: config.authMode === "standalone" ? { signIn: "/login" } : undefined,
