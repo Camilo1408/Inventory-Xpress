@@ -3,6 +3,14 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { config } from "@/lib/config";
+import { z } from "zod";
+import { parseBody } from "@/lib/api-body";
+
+const profileSchema = z.object({
+  currentPassword: z.string().nullish(),
+  newUsername: z.string().nullish(),
+  newPassword: z.string().nullish(),
+});
 
 function isStandalone() {
   return config.features.userManagement;
@@ -16,11 +24,9 @@ export async function PATCH(req: Request) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
-  const body = await req.json() as {
-    currentPassword?: string;
-    newUsername?: string;
-    newPassword?: string;
-  };
+  const parsed = await parseBody(req, profileSchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   if (!body.currentPassword) {
     return NextResponse.json({ error: "Ingresa tu contraseña actual" }, { status: 400 });

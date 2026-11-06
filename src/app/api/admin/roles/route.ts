@@ -5,6 +5,14 @@ import { canManageUsers } from "@/lib/permissions";
 import { sanitizePermissionKeys } from "@/lib/roles";
 import { uniqueSlug } from "@/lib/slug";
 import { config } from "@/lib/config";
+import { z } from "zod";
+import { parseBody } from "@/lib/api-body";
+
+const createRoleSchema = z.object({
+  name: z.string().nullish(),
+  description: z.string().nullish(),
+  permissions: z.unknown().optional(),
+});
 
 function isStandalone() {
   return config.features.userManagement;
@@ -42,7 +50,9 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!canManageUsers(session.user)) return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
 
-  const body = await req.json() as { name?: string; description?: string; permissions?: unknown };
+  const parsed = await parseBody(req, createRoleSchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
   if (!body.name?.trim()) {
     return NextResponse.json({ error: "El nombre del rol es requerido" }, { status: 400 });
   }

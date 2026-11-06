@@ -8,6 +8,8 @@ Sistema web de gestión de inventario para cualquier negocio que maneje insumos 
 - `pnpm build` — Build de producción
 - `pnpm lint` — ESLint
 - `pnpm test` — Vitest (unit tests)
+- CI (`.github/workflows/ci.yml`) en cada PR y push a `main`: `tsc`, ESLint con **0 errores**,
+  Vitest, `pnpm build` y `pnpm audit --prod --audit-level critical`. Sin secretos: SQLite vacía.
 - `npx prisma generate` — Regenerar cliente Prisma tras cambios de schema
 - `npx prisma db push` — Aplicar schema a la DB (dev local)
 - `npx tsx prisma/seed.ts` — Insertar datos iniciales (categorías + usuarios demo por rol)
@@ -155,6 +157,9 @@ cifrada con `NEXTAUTH_SECRET` y `SESSION_CHECK_SALT`, que debe ser idéntica en 
 2. **`currentStock` solo se modifica dentro de una transacción Prisma** que también crea el `StockMovement`. Nunca actualizar el stock sin registro del movimiento.
 3. **No crear tabla de usuarios en modo integrated.** `userId` y `userName` en movimientos son strings copiados del JWT, no foreign keys.
 4. **Verificar permisos explícitamente en cada API route** — el proxy no protege llamadas directas a `/api`.
+   **Todo cuerpo pasa por Zod:** `parseBody(req, schema)` de `@/lib/api-body` (nunca
+   `await req.json() as {...}`, que no valida). El schema fija los tipos; las reglas de negocio
+   y sus mensajes siguen en la ruta. `src/app/api/__tests__/api-contract.test.ts` lo exige.
 5. **El `NEXTAUTH_SECRET` debe ser idéntico al de Nomina Xpress en modo integrated.**
 6. **El logout en modo integrated redirige al endpoint de logout de Nomina Xpress.**
 7. **Prisma 7**: no hay `url` en `schema.prisma`, va en `prisma.config.ts`. El cliente requiere adapter.
