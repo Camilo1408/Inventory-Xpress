@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { formatStock } from "@/lib/utils";
 import { BottleLevelSelector, ReserveCounter, BottleLevelBadge, ShotsCopeoToggle, ShotsCopeoBadge } from "@/components/inventario/bottle-level-selector";
+import { ProductJumpSearch, useProductJump, type JumpOption } from "@/components/inventario/product-jump-search";
 import { isBottleTrackedSlug, isBottleLevel, isShotsCopeoTrackedSlug, emptyOpenBottle, type BottleLevel } from "@/lib/bottle";
 import { sanitizeNumericInput, parseNumericValue, numericFieldProps } from "@/lib/numeric";
 import {
@@ -48,6 +49,11 @@ interface Product {
   bottleLevel?: string | null;
   reserveBottles?: number | null;
   shotsCopeo?: boolean;
+  // Estado de INICIO del día (lo que quedó ayer), calculado en el servidor:
+  // stock sin los movimientos manuales de hoy / estado de botella del último cierre.
+  openingStock: number;
+  openingBottleLevel?: string | null;
+  openingReserveBottles?: number | null;
 }
 
 interface InventoryItem {
@@ -378,6 +384,17 @@ function DiscrepancyDialog({
   );
 }
 
+// Movimientos manuales ya registrados hoy (no forman parte del conteo inicial).
+function TodayMovesHint({ product, block }: { product: Product; block?: boolean }) {
+  const net = product.currentStock - product.openingStock;
+  if (Math.abs(net) <= 0.001) return null;
+  return (
+    <span className={`${block ? "block " : ""}text-[11px] text-blue-600`}>
+      Hoy {net > 0 ? "+" : ""}{formatStock(net, product.unit)} en movimientos
+    </span>
+  );
+}
+
 // ─── View: Sin inventario (crear) ────────────────────────────────────────────
 
 interface StartItem {
@@ -398,17 +415,22 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
   const [discDialog, setDiscDialog] = useState(false);
   const [discRows, setDiscRows] = useState<DiscRow[]>([]);
   const [discNotes, setDiscNotes] = useState<Record<string, string>>({});
+  const { highlightedId, jumpTo } = useProductJump();
+  const jumpOptions = useMemo<JumpOption[]>(
+    () => allProducts.map((p) => ({ id: p.id, name: p.name, group: categoryName(p) })),
+    [allProducts]
+  );
 
   const [levels, setLevels] = useState<Record<string, BottleLevel>>(() =>
     Object.fromEntries(
       allProducts
-        .filter((p) => productIsBottle(p) && isBottleLevel(p.bottleLevel))
-        .map((p) => [p.id, p.bottleLevel as BottleLevel])
+        .filter((p) => productIsBottle(p) && isBottleLevel(p.openingBottleLevel))
+        .map((p) => [p.id, p.openingBottleLevel as BottleLevel])
     )
   );
   const [reserves, setReserves] = useState<Record<string, number>>(() =>
     Object.fromEntries(
-      allProducts.filter((p) => productIsBottle(p)).map((p) => [p.id, p.reserveBottles ?? 0])
+      allProducts.filter((p) => productIsBottle(p)).map((p) => [p.id, p.openingReserveBottles ?? 0])
     )
   );
   // Indicador shots/copeo — solo Licores y Vinos (productos numéricos, no botella).
@@ -425,28 +447,27 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
     const nextReserves: Record<string, number> = {};
     for (const p of allProducts) {
       if (!productIsBottle(p)) continue;
-      if (isBottleLevel(p.bottleLevel)) nextLevels[p.id] = p.bottleLevel as BottleLevel;
-      nextReserves[p.id] = p.reserveBottles ?? 0;
+      if (isBottleLevel(p.openingBottleLevel)) nextLevels[p.id] = p.openingBottleLevel as BottleLevel;
+      nextReserves[p.id] = p.openingReserveBottles ?? 0;
     }
     setLevels(nextLevels);
     setReserves(nextReserves);
     toast.success("Niveles copiados del último registro");
   }
 
-  // Copia el cierre de ayer completo como conteo inicial de hoy: para productos
-  // numéricos, el stock del sistema (= conteo final de ayer, si no hubo
-  // movimientos desde entonces) pasa a ser el conteo inicial; para botellas,
-  // mismo comportamiento que keepSameBottles.
+  // Copia lo que quedó ayer como conteo inicial de hoy: para productos numéricos,
+  // el stock de INICIO del día (sin los ingresos/salidas ya registrados hoy, que
+  // se suman aparte en el esperado); para botellas, el estado del último cierre.
   function keepSameAsYesterday() {
     const nextCounts: Record<string, string> = {};
     const nextLevels: Record<string, BottleLevel> = {};
     const nextReserves: Record<string, number> = {};
     for (const p of allProducts) {
       if (productIsBottle(p)) {
-        if (isBottleLevel(p.bottleLevel)) nextLevels[p.id] = p.bottleLevel as BottleLevel;
-        nextReserves[p.id] = p.reserveBottles ?? 0;
+        if (isBottleLevel(p.openingBottleLevel)) nextLevels[p.id] = p.openingBottleLevel as BottleLevel;
+        nextReserves[p.id] = p.openingReserveBottles ?? 0;
       } else {
-        nextCounts[p.id] = String(p.currentStock);
+        nextCounts[p.id] = String(p.openingStock);
       }
     }
     setCounts(nextCounts);
@@ -503,13 +524,13 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
       .map((i) => {
         const p = allProducts.find((pr) => pr.id === i.productId);
         if (!p || productIsBottle(p)) return null;
-        const diff = i.initialCount - p.currentStock;
+        const diff = i.initialCount - p.openingStock;
         if (Math.abs(diff) <= 0.001) return null;
         return {
           productId: p.id,
           name: p.name,
           unit: p.unit,
-          system: p.currentStock,
+          system: p.openingStock,
           counted: i.initialCount,
           diff,
         } satisfies DiscRow;
@@ -556,7 +577,7 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
             <div>
               <p className="text-sm font-semibold text-blue-800">Conteo inicial del día</p>
               <p className="text-xs text-blue-600 mt-0.5">
-                Registra las existencias físicas actuales. Los campos vacíos o en cero se registrarán como <strong>sin existencias (0 unidades)</strong>.
+                Registra las existencias con las que arranca el día (lo que quedó ayer). Los ingresos y salidas registrados hoy se suman aparte al esperado. Los campos vacíos o en cero se registrarán como <strong>sin existencias (0 unidades)</strong>.
               </p>
             </div>
           </div>
@@ -572,6 +593,8 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
           </Button>
         </div>
 
+        <ProductJumpSearch options={jumpOptions} onSelect={jumpTo} />
+
         {Object.entries(byCategory).map(([cat, products]) => (
           <div key={cat} className="bg-white border border-slate-200 rounded-lg overflow-hidden">
             <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
@@ -585,7 +608,11 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
             {products.every(productIsBottle) ? (
               <div className="divide-y divide-slate-100">
                 {products.map((p) => (
-                  <div key={p.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+                  <div
+                    key={p.id}
+                    data-product-row={p.id}
+                    className={`px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between transition-colors duration-500 ${highlightedId === p.id ? "bg-blue-100" : ""}`}
+                  >
                     <span className="font-medium text-slate-800 text-sm">{p.name}</span>
                     <div className="flex flex-wrap items-center gap-4">
                       <div className="flex flex-wrap items-center gap-2">
@@ -632,7 +659,8 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
                     return (
                       <div
                         key={p.id}
-                        className={`px-4 py-3 flex items-center justify-between gap-3 ${isEmpty ? "bg-red-50/40" : ""}`}
+                        data-product-row={p.id}
+                        className={`px-4 py-3 flex items-center justify-between gap-3 transition-colors duration-500 ${highlightedId === p.id ? "bg-blue-100" : isEmpty ? "bg-red-50/40" : ""}`}
                       >
                         <div className="min-w-0">
                           <p className="font-medium text-slate-800 text-sm truncate">{p.name}</p>
@@ -643,11 +671,13 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
                                 onChange={(v) => setShotsCopeoFlags((prev) => ({ ...prev, [p.id]: v }))}
                               />
                             )}
-                            <span>Sistema: {formatStock(p.currentStock, p.unit)}</span>
+                            <span>Sistema: {formatStock(p.openingStock, p.unit)}</span>
+                            <TodayMovesHint product={p} />
                           </p>
                         </div>
                         <Input
                           {...numericFieldProps}
+                          data-jump-focus
                           className={`w-24 shrink-0 text-right tabular-nums ${isEmpty ? "border-red-300 focus-visible:ring-red-400" : ""}`}
                           value={counts[p.id] ?? ""}
                           onChange={(e) => setCounts((prev) => ({ ...prev, [p.id]: sanitizeNumericInput(e.target.value) }))}
@@ -671,7 +701,11 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
                     {products.map((p) => {
                       const isEmpty = !counts[p.id] || counts[p.id] === "0" || counts[p.id] === "";
                       return (
-                        <tr key={p.id} className={isEmpty ? "bg-red-50/40" : ""}>
+                        <tr
+                          key={p.id}
+                          data-product-row={p.id}
+                          className={`transition-colors duration-500 ${highlightedId === p.id ? "bg-blue-100" : isEmpty ? "bg-red-50/40" : ""}`}
+                        >
                           <td className="px-4 py-2.5 font-medium text-slate-800">
                             <div className="flex items-center gap-1.5">
                               <span>{p.name}</span>
@@ -684,11 +718,13 @@ function CreateView({ date, allProducts, category }: { date: string; allProducts
                             </div>
                           </td>
                           <td className="px-4 py-2.5 text-right text-slate-500 tabular-nums">
-                            {formatStock(p.currentStock, p.unit)}
+                            {formatStock(p.openingStock, p.unit)}
+                            <TodayMovesHint product={p} block />
                           </td>
                           <td className="px-4 py-2.5 text-right">
                             <Input
                               {...numericFieldProps}
+                              data-jump-focus
                               className={`w-28 ml-auto text-right tabular-nums ${isEmpty ? "border-red-300 focus-visible:ring-red-400" : ""}`}
                               value={counts[p.id] ?? ""}
                               onChange={(e) => setCounts((prev) => ({ ...prev, [p.id]: sanitizeNumericInput(e.target.value) }))}
@@ -896,6 +932,11 @@ function OpenView({
     () => new Set(inventory.items.map((i) => i.productId)),
     [inventory.items]
   );
+  const { highlightedId, jumpTo } = useProductJump();
+  const jumpOptions = useMemo<JumpOption[]>(
+    () => inventory.items.map((i) => ({ id: i.productId, name: i.product.name, group: categoryName(i.product) })),
+    [inventory.items]
+  );
 
   // ── Descartar jornada abierta (PROPRIETARY/SUPERADMIN) ────────────────────
   const [discardDialog, setDiscardDialog] = useState(false);
@@ -938,9 +979,9 @@ function OpenView({
       Object.fromEntries(
         numericCategoryProducts.map((p) => {
           // Producto ya en la jornada → su conteo inicial; producto nuevo → su
-          // stock actual como valor de partida editable.
+          // stock de inicio del día como valor de partida editable.
           const existing = initialByProduct.get(p.id);
-          return [p.id, String(existing ?? p.currentStock)];
+          return [p.id, String(existing ?? p.openingStock)];
         })
       )
     );
@@ -1227,6 +1268,8 @@ function OpenView({
       )}
 
       <form onSubmit={handleClose} className="space-y-4">
+        <ProductJumpSearch options={jumpOptions} onSelect={jumpTo} />
+
         {categoryCards.map((cat) => cat.isBottle ? (
           <div key={cat.name} className="bg-white border border-slate-200 rounded-lg overflow-hidden">
             <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
@@ -1237,7 +1280,11 @@ function OpenView({
             </div>
             <div className="divide-y divide-slate-100">
               {cat.bottleItems.map((i) => (
-                <div key={i.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+                <div
+                  key={i.id}
+                  data-product-row={i.productId}
+                  className={`px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between transition-colors duration-500 ${highlightedId === i.productId ? "bg-blue-100" : ""}`}
+                >
                   <span className="font-medium text-slate-800 text-sm">{i.product.name}</span>
                   <div className="flex flex-wrap items-center gap-4">
                     <div className="flex flex-wrap items-center gap-2">
@@ -1290,7 +1337,12 @@ function OpenView({
             return (
               <div
                 key={r.item.id}
-                className={`rounded-xl border p-4 ${finalIsEmpty ? "border-red-200 bg-red-50/30" : "border-slate-200 bg-white"}`}
+                data-product-row={r.item.productId}
+                className={`rounded-xl border p-4 transition-colors duration-500 ${
+                  highlightedId === r.item.productId
+                    ? "border-blue-300 bg-blue-50"
+                    : finalIsEmpty ? "border-red-200 bg-red-50/30" : "border-slate-200 bg-white"
+                }`}
               >
                 <div className="mb-3">
                   <p className="font-medium text-slate-800 truncate">{r.item.product.name}</p>
@@ -1348,6 +1400,7 @@ function OpenView({
                   <label className="block text-xs font-medium text-slate-800 mb-1">Conteo real *</label>
                   <Input
                     {...numericFieldProps}
+                    data-jump-focus
                     className={`w-full text-right tabular-nums ${finalIsEmpty ? "border-red-300 focus-visible:ring-red-400" : ""}`}
                     value={r.finalStr}
                     onChange={(e) =>
@@ -1401,7 +1454,12 @@ function OpenView({
                 const finalIsEmpty = r.finalStr.trim() === "" || r.finalStr === "0";
                 return (
                   <Fragment key={r.item.id}>
-                    <tr className={finalIsEmpty ? "bg-red-50/30" : "hover:bg-slate-50"}>
+                    <tr
+                      data-product-row={r.item.productId}
+                      className={`transition-colors duration-500 ${
+                        highlightedId === r.item.productId ? "bg-blue-100" : finalIsEmpty ? "bg-red-50/30" : "hover:bg-slate-50"
+                      }`}
+                    >
                     <td className="px-4 py-2.5 font-medium text-slate-800">
                       <div className="flex items-center gap-1.5">
                         <span>{r.item.product.name}</span>
@@ -1450,6 +1508,7 @@ function OpenView({
                     <td className="px-3 py-2.5 text-right">
                       <Input
                         {...numericFieldProps}
+                        data-jump-focus
                         className={`w-24 ml-auto text-right tabular-nums ${
                           finalIsEmpty ? "border-red-300 focus-visible:ring-red-400" : ""
                         }`}

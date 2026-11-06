@@ -259,12 +259,19 @@ stock del sistema y el conteo físico real.
 1. Menú **Inventario Diario**.
 2. Elija la **categoría** (por ejemplo, Barra o Cocina en un restaurante; Bebidas o Abarrotes
    en una tienda).
-3. En **Conteo inicial del día**, ingrese las existencias físicas de cada producto. Los
-   campos vacíos o en cero se registran como sin existencias (0).
+3. En **Conteo inicial del día**, ingrese las existencias con las que **arranca el día** (lo
+   que quedó ayer). Los campos vacíos o en cero se registran como sin existencias (0).
 4. Confirme.
 
-> **Atajo "Mantener igual al cierre de ayer":** copia como conteo inicial el último estado
-> registrado de cada producto. Útil los días sin movimiento; luego solo corrija lo que cambió.
+> **Atajo "Mantener igual al cierre de ayer":** copia como conteo inicial lo que quedó ayer
+> de cada producto. Útil los días sin movimiento; luego solo corrija lo que cambió.
+
+> **Ingresos o salidas registrados antes de abrir:** si hoy ya se registraron movimientos
+> antes de iniciar la jornada (por ejemplo, llegó un pedido), **no** los sume al conteo
+> inicial. La columna *Stock sistema* muestra lo que quedó ayer y debajo avisa, por
+> ejemplo, "Hoy +12 und en movimientos". Esos movimientos se suman solos al **esperado**
+> del día, igual que los que se registren después de abrir. Ejemplo: ayer quedaron 6,
+> hoy llegan 12 antes de abrir → conteo inicial 6, esperado al cierre 18.
 
 > **Fracciones:** en los conteos puede escribir cantidades fraccionarias, por ejemplo `1/2`,
 > `7 1/2` o `0.5` (media unidad). Es útil para productos que no siempre están completos.

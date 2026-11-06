@@ -7,7 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { canViewDailyCategory, canDailyCategory } from "@/lib/permissions";
 import { DailyInventoryClient } from "./daily-inventory-client";
 import { config } from "@/lib/config";
-import { businessToday, businessDayRange } from "@/lib/dates";
+import { businessToday, businessDayRange, businessDayStart } from "@/lib/dates";
+import { openingStocks } from "@/lib/daily-opening";
+import { isBottleTrackedSlug } from "@/lib/bottle";
 
 const STATUS_BADGE: Record<string, string> = {
   none:   "bg-slate-100 text-slate-500 border-0",
@@ -104,11 +106,55 @@ export default async function InventarioDiarioPage({
   });
   const catIds = [category.id, ...children.map((c) => c.id)];
 
-  const allProducts = await prisma.product.findMany({
+  const products = await prisma.product.findMany({
     where: { active: true, categoryId: { in: catIds } },
     include: { category: { select: { name: true, slug: true } } },
     // Orden por subcategoría según el inventario físico, luego nombre.
     orderBy: [{ category: { sortOrder: "asc" } }, { name: "asc" }],
+  });
+
+  // Estado de INICIO del día (lo que quedó ayer): base del conteo inicial y de
+  // "Mantener igual al cierre de ayer". Numéricos: stock actual sin los
+  // movimientos manuales de hoy. Botellas: su estado no se puede "des-aplicar",
+  // así que si hubo movimientos de botella hoy se toma el último cierre anterior.
+  const productIds = products.map((p) => p.id);
+  const opening = await openingStocks(productIds, date);
+  const bottleIds = products.filter((p) => isBottleTrackedSlug(p.category?.slug)).map((p) => p.id);
+  const movedBottleIds = new Set(
+    bottleIds.length
+      ? (await prisma.stockMovement.findMany({
+          where: {
+            productId: { in: bottleIds },
+            OR: [{ source: null }, { source: "bottle_adjust" }],
+            createdAt: { gte: businessDayStart(date) },
+          },
+          select: { productId: true },
+          distinct: ["productId"],
+        })).map((m) => m.productId)
+      : []
+  );
+  const lastClosedBottle = new Map<string, { bottleLevel: string | null; reserveBottles: number | null }>();
+  if (movedBottleIds.size > 0) {
+    const closedItems = await prisma.dailyInventoryItem.findMany({
+      where: {
+        productId: { in: [...movedBottleIds] },
+        dailyInventory: { categoryId: category.id, status: "closed", date: { lt: date } },
+      },
+      orderBy: { dailyInventory: { date: "desc" } },
+      select: { productId: true, bottleLevel: true, reserveBottles: true },
+    });
+    for (const it of closedItems) {
+      if (!lastClosedBottle.has(it.productId)) lastClosedBottle.set(it.productId, it);
+    }
+  }
+  const allProducts = products.map((p) => {
+    const closed = lastClosedBottle.get(p.id);
+    return {
+      ...p,
+      openingStock: opening.get(p.id) ?? p.currentStock,
+      openingBottleLevel: closed ? closed.bottleLevel : p.bottleLevel,
+      openingReserveBottles: closed ? closed.reserveBottles : p.reserveBottles,
+    };
   });
 
   const existing = await prisma.dailyInventory.findUnique({
