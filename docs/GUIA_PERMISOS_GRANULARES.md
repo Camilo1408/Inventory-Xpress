@@ -335,10 +335,10 @@ if (!canViewReports(session.user)) redirect("/");
 Con ambos proyectos corriendo (`nómina :3000`, `inventario :3001`) y tras
 **re-loguear** en nómina:
 
-1. **PROPRIETARY (SadminJavier / Javier123)** → entra al inventario y puede crear/editar/eliminar productos, categorías, movimientos, ajustes, reabrir inventario, reportes y usuarios.
-2. **SUPERADMIN (SadminMajo / Majo123)** y **ADMIN (AdminValen / Valen123)** → igual que PROPRIETARY (control total).
-3. **EMPLOYEE con toggle (CesarH / CesarH123)** → entra, puede registrar conteo (`stock:count`) y ver dashboard, pero **no** crear productos ni reabrir inventario.
-4. **EMPLOYEE sin toggle (Vanessa / Vanessa123)** → `/unauthorized`.
+1. **PROPRIETARY (SadminJavier)** → entra al inventario y puede crear/editar/eliminar productos, categorías, movimientos, ajustes, reabrir inventario, reportes y usuarios.
+2. **SUPERADMIN (SadminMajo)** y **ADMIN (AdminValen)** → igual que PROPRIETARY (control total).
+3. **EMPLOYEE con toggle (CesarH)** → entra, puede registrar conteo (`stock:count`) y ver dashboard, pero **no** crear productos ni reabrir inventario.
+4. **EMPLOYEE sin toggle (Vanessa)** → `/unauthorized`.
 5. **Rol personalizado:** crea en nómina un rol con solo `inventory:view` + `inventory:stock:count`, asígnalo a un usuario ADMIN, re-loguea → debe comportarse como el empleado operativo (sin gestión de productos).
 
 > Para inspeccionar el JWT en el inventario, imprime temporalmente
