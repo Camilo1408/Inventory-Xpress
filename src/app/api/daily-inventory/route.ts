@@ -7,21 +7,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/lib/config";
 import { businessToday, businessDayRange } from "@/lib/dates";
 import { openingStocks } from "@/lib/daily-opening";
+import { z } from "zod";
+import { parseBody, parseValue } from "@/lib/api-body";
 
-interface CreateItem {
-  productId: string;
-  initialCount: number;
-  note?: string;
-  bottleLevel?: string | null;
-  reserveBottles?: number | null;
-  shotsCopeo?: boolean;
-}
+// Solo el sobre: los ítems se validan más abajo (después del permiso), como antes.
+const createDailySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  categoryId: z.string(),
+  items: z.array(z.unknown()).min(1),
+});
 
-interface CreateBody {
-  date?: unknown;
-  categoryId?: unknown;
-  items?: unknown;
-}
+const createItemSchema = z.object({
+  productId: z.string(),
+  initialCount: z.number().optional(),
+  note: z.string().nullish(),
+  bottleLevel: z.string().nullish(),
+  reserveBottles: z.number().nullish(),
+  shotsCopeo: z.boolean().nullish(),
+});
 
 /** Carga una categoría RAÍZ de inventario con su slug y los ids de productos que le pertenecen
  *  (productos de la propia raíz + productos de sus subcategorías). */
@@ -117,21 +120,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Función no disponible" }, { status: 403 });
   }
 
-  const body = await req.json() as CreateBody;
-
-  if (
-    typeof body.date !== "string" ||
-    !/^\d{4}-\d{2}-\d{2}$/.test(body.date) ||
-    typeof body.categoryId !== "string" ||
-    !Array.isArray(body.items) ||
-    body.items.length === 0
-  ) {
-    return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
-  }
+  const parsed = await parseBody(req, createDailySchema, "Datos inválidos");
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   const date       = body.date;
   const categoryId = body.categoryId;
-  const items      = body.items as CreateItem[];
 
   const loaded = await loadRootCategory(categoryId);
   if (!loaded || !loaded.category.slug) {
@@ -146,9 +140,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Sin permiso para abrir esta categoría" }, { status: 403 });
   }
 
+  const parsedItems = parseValue(z.array(createItemSchema), body.items, "Datos inválidos en items");
+  if (!parsedItems.ok) return parsedItems.response;
+  const items = parsedItems.data;
+
   const invalid = items.some((i) => {
-    if (typeof i.productId !== "string") return true;
-    if (i.shotsCopeo != null && typeof i.shotsCopeo !== "boolean") return true;
     const isBottle = isBottleTrackedSlug(loaded.slugByProduct.get(i.productId));
     if (isBottle) {
       if (i.bottleLevel != null && !isBottleLevel(i.bottleLevel)) return true;
@@ -190,7 +186,8 @@ export async function POST(req: NextRequest) {
           const isBottle = isBottleTrackedSlug(slug);
           return {
             productId: i.productId,
-            initialCount: isBottle ? 0 : i.initialCount,
+            // El guarda de arriba exige número en los ítems que no son de botella.
+            initialCount: isBottle ? 0 : (i.initialCount ?? 0),
             bottleLevel: isBottle && isBottleLevel(i.bottleLevel) ? i.bottleLevel : null,
             reserveBottles: isBottle ? (i.reserveBottles ?? 0) : null,
             shotsCopeo: isShotsCopeoTrackedSlug(slug) ? !!i.shotsCopeo : false,

@@ -5,6 +5,13 @@ import { canManageCategories, canAccessInventory, dailyCategoryKeys } from "@/li
 import { uniqueSlug } from "@/lib/slug";
 import { notifyNominaCategoryCreated } from "@/lib/permission-registry";
 import { audit } from "@/lib/audit";
+import { z } from "zod";
+import { parseBody } from "@/lib/api-body";
+
+const createCategorySchema = z.object({
+  name: z.string().nullish(),
+  parentId: z.string().nullish(),
+});
 
 export async function GET() {
   const session = await auth();
@@ -37,7 +44,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
   }
 
-  const body = await req.json() as { name?: string; parentId?: string };
+  const parsed = await parseBody(req, createCategorySchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
   if (!body.name?.trim()) {
     return NextResponse.json({ error: "El nombre es requerido" }, { status: 400 });
   }

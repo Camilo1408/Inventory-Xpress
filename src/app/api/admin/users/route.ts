@@ -5,6 +5,18 @@ import { canManageUsers } from "@/lib/permissions";
 import { isBaseRole, sanitizePermissionKeys } from "@/lib/roles";
 import bcrypt from "bcryptjs";
 import { config } from "@/lib/config";
+import { z } from "zod";
+import { parseBody } from "@/lib/api-body";
+
+const createUserSchema = z.object({
+  username: z.string().nullish(),
+  password: z.string().nullish(),
+  name: z.string().nullish(),
+  role: z.string().nullish(),
+  customRoleId: z.string().nullish(),
+  permsGrant: z.unknown().optional(),
+  permsRevoke: z.unknown().optional(),
+});
 
 function isStandalone() {
   return config.features.userManagement;
@@ -40,11 +52,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
   }
 
-  const body = await req.json() as {
-    username?: string; password?: string; name?: string;
-    role?: string; customRoleId?: string | null;
-    permsGrant?: unknown; permsRevoke?: unknown;
-  };
+  const parsed = await parseBody(req, createUserSchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
   if (!body.username?.trim() || !body.password) {
     return NextResponse.json({ error: "Usuario y contraseña son requeridos" }, { status: 400 });
   }

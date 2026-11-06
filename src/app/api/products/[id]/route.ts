@@ -3,6 +3,18 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { canEditProducts, canDeleteProducts, canHardDeleteProducts, canAccessInventory } from "@/lib/permissions";
 import { isBottleLevel } from "@/lib/bottle";
+import { z } from "zod";
+import { parseBody } from "@/lib/api-body";
+
+const updateProductSchema = z.object({
+  name: z.string().optional(),
+  categoryId: z.string().optional(),
+  unit: z.string().optional(),
+  minStock: z.number().min(0, "El stock mínimo no puede ser negativo").optional(),
+  imageUrl: z.string().nullish(),
+  active: z.boolean().optional(),
+  alertBottleLevel: z.string().nullish(),
+});
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -26,15 +38,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const { id } = await params;
-  const body = await req.json() as {
-    name?: string;
-    categoryId?: string;
-    unit?: string;
-    minStock?: number;
-    imageUrl?: string;
-    active?: boolean;
-    alertBottleLevel?: string | null;
-  };
+  const parsed = await parseBody(req, updateProductSchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   // Reactivar/desactivar es la contraparte de "eliminar" (soft-delete), no una
   // edición del producto: se gobierna por PRODUCTS_DELETE. Cualquier otro campo

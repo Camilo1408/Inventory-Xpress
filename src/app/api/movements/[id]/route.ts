@@ -5,6 +5,13 @@ import { canEditMovements } from "@/lib/permissions";
 import { isBottleTrackedSlug, bottleStock } from "@/lib/bottle";
 import { toBusinessDate } from "@/lib/dates";
 import { audit } from "@/lib/audit";
+import { z } from "zod";
+import { parseBody } from "@/lib/api-body";
+
+const correctMovementSchema = z.object({
+  quantity: z.number({ error: "Cantidad inválida" }).optional(),
+  notes: z.string({ error: "Notas inválidas" }).nullable().optional(),
+});
 
 /** Corrección de movimientos manuales (source = null): editar cantidad/notas o
  *  eliminar. Los auto-generados (cierres de jornada, ajustes de nivel, aperturas)
@@ -133,7 +140,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   const { id } = await params;
-  const body = await req.json() as { quantity?: unknown; notes?: unknown };
+  const parsed = await parseBody(req, correctMovementSchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   const hasQuantity = body.quantity !== undefined;
   const hasNotes = body.notes !== undefined;
