@@ -4,15 +4,13 @@ Inventory Xpress se despliega **una instancia por cliente**, todas desde el mism
 (`main`). La diferencia entre clientes es **configuración** (env vars + feature flags),
 nunca código.
 
-> **⚠️ Estado real a día de hoy: el cutover NO se ha ejecutado.** Las ramas `client/<slug>`
-> todavía no existen en el remoto y el proyecto Vercel de Cucina dei Fiori
-> (`inventory-xpress-fiori`) sigue con su Production Branch en `main`. Eso significa que,
-> **hoy, cada merge a `main` despliega directamente a producción de Fiori** — exactamente lo
-> que este modelo busca evitar. Hasta que se ejecute el cutover (Task 8 del plan de
-> implementación), todo lo que sigue en este documento describe el modelo **destino**, no el
-> vigente. Antes de promover o de asumir aislamiento entre clientes, confirma el estado real
-> con `node scripts/check-client-branches.mjs` y con la Production Branch configurada en cada
-> proyecto Vercel.
+> **Cutover ejecutado el 05/11/2026.** `client/cucina-dei-fiori` existe en el remoto (se
+> promovió hasta `c9d786f`, el merge del PR #17) y el proyecto Vercel `inventory-xpress-fiori`
+> tiene esa rama como Production Branch. Desde entonces, **un merge a `main` ya no llega a
+> producción de Fiori**: solo la promoción de la rama puntero la actualiza. La configuración
+> de Vercel no está versionada; si dudas del estado, compáralo con la tabla de
+> [Configuración de Vercel por proyecto](#configuración-de-vercel-por-proyecto) y corre
+> `node scripts/check-client-branches.mjs`.
 
 ## Modelo: ramas puntero
 
@@ -100,7 +98,7 @@ que de verdad deje de servir tráfico.
 
 | Cliente | Slug | Rama | Proyecto Vercel | Modo | Features |
 |---|---|---|---|---|---|
-| Cucina dei Fiori | `cucina-dei-fiori` | `client/cucina-dei-fiori` ⚠️ pendiente de crear — hoy el proyecto sigue desplegando desde `main` | `inventory-xpress-fiori` | integrated | cocktails, dailyInventory |
+| Cucina dei Fiori | `cucina-dei-fiori` | `client/cucina-dei-fiori` | `inventory-xpress-fiori` | integrated | cocktails, dailyInventory |
 | Demo | `demo` | `main` | `inventory-xpress-demo` | standalone | cocktails, dailyInventory |
 
 ## Configuración de Vercel por proyecto
@@ -110,8 +108,13 @@ repo, así que conviene auditarla de vez en cuando contra esta tabla:
 
 | Proyecto Vercel | Production Branch | Ignored Build Step |
 |---|---|---|
-| `inventory-xpress-demo` | `main` | *(sin definir)* — hace falta uno que salte los builds de ramas `client/*`: `if [ "$VERCEL_GIT_COMMIT_REF" = "main" ]; then exit 1; else exit 0; fi` |
-| `inventory-xpress-fiori` | `client/cucina-dei-fiori` (destino — hoy sigue en `main`, ver aviso al inicio del documento) | `if [ "$VERCEL_GIT_COMMIT_REF" = "client/cucina-dei-fiori" ]; then exit 1; else exit 0; fi` |
+| `inventory-xpress-demo` | `main` | `if [ "$VERCEL_GIT_COMMIT_REF" = "main" ]; then exit 1; else exit 0; fi` |
+| `inventory-xpress-fiori` | `client/cucina-dei-fiori` | `if [ "$VERCEL_GIT_COMMIT_REF" = "client/cucina-dei-fiori" ]; then exit 1; else exit 0; fi` |
+
+El Ignored Build Step se pega en Vercel → proyecto → **Settings → Build and Deployment →
+Ignored Build Step**, con la opción *Custom* (o *Run my Bash script*). Es un script de bash
+que corre Vercel antes de cada build; **no se ejecuta en una terminal local** (en PowerShell
+da error de sintaxis). Salir con `1` construye; salir con `0` omite el build.
 
 Sin el Ignored Build Step del demo, el proyecto `inventory-xpress-demo` construye también
 las ramas `client/*` como preview. En ese preview, `verify-client-flags.mjs` compararía los

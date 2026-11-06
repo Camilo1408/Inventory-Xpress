@@ -5,9 +5,9 @@ import path from "path";
 // Las mismas que usa Nómina Xpress, ajustadas a Vercel Blob (imágenes de productos).
 //
 // La CSP va primero en modo REPORT-ONLY: el navegador avisa en la consola de lo que
-// bloquearía, pero no bloquea nada. Como `main` despliega directo a producción, así se
-// valida contra el uso real sin riesgo de romper el inventario; cuando la consola quede
-// limpia se cambia la clave a "Content-Security-Policy" para que se aplique.
+// bloquearía, pero no bloquea nada. Así se valida contra el uso real en producción sin
+// riesgo de romper el inventario; cuando la consola quede limpia se cambia la clave a
+// "Content-Security-Policy" para que se aplique.
 const contentSecurityPolicy = [
   "default-src 'self'",
   "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com",
