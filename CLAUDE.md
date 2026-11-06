@@ -7,6 +7,7 @@ Sistema web de gestión de inventario para cualquier negocio que maneje insumos 
 - `pnpm dev` — Servidor de desarrollo en localhost:3001
 - `pnpm build` — Build de producción
 - `pnpm lint` — ESLint
+- `pnpm test` — Vitest (unit tests)
 - `npx prisma generate` — Regenerar cliente Prisma tras cambios de schema
 - `npx prisma db push` — Aplicar schema a la DB (dev local)
 - `npx tsx prisma/seed.ts` — Insertar datos iniciales (categorías + usuarios demo por rol)
@@ -101,6 +102,14 @@ standalone los permisos efectivos se resuelven en `src/lib/roles.ts`
 (`resolveUserPermissions`: rol base ∪ rol personalizado ∪ grant − revoke); en modo
 integrated llegan firmados en el JWT de Nómina Xpress.
 
+**Verificación de sesión contra Nómina (modo integrated, I-H1b).** El callback `jwt()` de
+`auth.config.ts` llama `applyNominaSession()` (`src/lib/session-check.ts`): pregunta a
+`${NOMINA_APP_URL}/api/inventory-permissions/session` si la sesión sigue vigente y por los
+permisos actuales, como mucho una vez por minuto por sesión. `{ valid: false }` cierra la
+sesión (usuario desactivado o con la clave o el rol cambiados en Nómina); si Nómina no
+responde, **falla abierta** con lo que trae el JWT y deja un aviso en el log. La consulta va
+cifrada con `NEXTAUTH_SECRET` y `SESSION_CHECK_SALT`, que debe ser idéntica en Nómina.
+
 ## Sistema de Diseño
 
 ### Colores
@@ -128,7 +137,7 @@ integrated llegan firmados en el JWT de Nómina Xpress.
 | `NEXTAUTH_URL` | URL base del inventario |
 | `TURSO_DATABASE_URL` | URL Turso o `file:./inventario.db` en local |
 | `TURSO_AUTH_TOKEN` | Token Turso (omitir en local) |
-| `NOMINA_APP_URL` | URL de Nomina Xpress (server-side, para redirects) |
+| `NOMINA_APP_URL` | URL de Nomina Xpress (server-side: redirects y verificación de sesión) |
 | `NEXT_PUBLIC_NOMINA_APP_URL` | URL de Nomina Xpress (client-side, para links) |
 | `BLOB_READ_WRITE_TOKEN` | Token Vercel Blob (server-only) |
 
