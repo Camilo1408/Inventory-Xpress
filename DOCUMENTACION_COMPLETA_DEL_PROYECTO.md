@@ -282,7 +282,8 @@ Plantilla en `.env.example`. Copiar a `.env` (o `.env.local`) y completar:
 | `NOMINA_APP_URL` | integrated | URL de Nómina Xpress (server-side, redirects de login/logout). |
 | `NEXT_PUBLIC_NOMINA_APP_URL` | integrated | URL de Nómina Xpress (client-side, enlaces). |
 | `BLOB_READ_WRITE_TOKEN` | opcional | Token de Vercel Blob (subida de imágenes). |
-| `ROOT_DOMAIN` | prod | Dominio raíz para la cookie compartida entre subdominios. |
+| `AUTH_COOKIE_DOMAIN` | integrated/prod | Dominio de la cookie de sesión compartida con Nómina (ej. `.cucinadeifiori.com`). Lo lee `src/lib/auth.config.ts`. |
+| `APP_TIMEZONE` | opcional | Zona horaria IANA del negocio para el cálculo de la jornada (def. `America/Bogota`). |
 | `NEXT_PUBLIC_BRAND_NAME` | opcional | Nombre de marca mostrado (def. `Inventario`). |
 | `NEXT_PUBLIC_BRAND_LOGO` | opcional | URL del logo de marca. |
 | `NEXT_PUBLIC_FEATURE_COCKTAILS` | opcional | `true` activa el control por nivel de botella (**OFF** por defecto). |
@@ -617,8 +618,14 @@ permisos; además tiene *fallback* por rol en las categorías del inventario dia
 
 ### 16.3 Jornada de inventario diario
 1. Seleccionar categoría raíz accesible.
-2. **Abrir**: conteo inicial (ajusta stock con `source: daily_open_adjust` si difiere).
-3. Registrar movimientos durante el día (opcional).
+2. **Abrir**: conteo inicial = existencias al **inicio del día** (lo que quedó ayer). Se
+   concilia contra el stock de inicio del día —`currentStock` menos los movimientos manuales
+   (`source: null`) registrados desde el inicio del día de negocio, ver
+   `src/lib/daily-opening.ts`— y ajusta con `source: daily_open_adjust` si difiere. No se
+   concilia contra `currentStock`: un ingreso registrado antes de abrir se contaría doble en
+   el esperado (o el ajuste lo borraría).
+3. Registrar movimientos durante el día (opcional). **Esperado = inicial + todos los
+   movimientos manuales del día**, registrados antes o después de abrir la jornada.
 4. **Cerrar**: conteo final + entradas/salidas no registradas (con motivo y hora); se
    generan los movimientos `daily_nr_entry/exit/close_adjust`.
 5. **Reabrir** (opcional): requiere `canReopenDailyInventory`; deja `reopenReason`.
@@ -759,12 +766,20 @@ Retención de **180 días** (6 meses); ver §21.
 
 ## 22. Despliegue y producción
 
-Ver `docs/runbooks/releases-y-multicliente.md` (fuente de verdad). Resumen:
+Ver `docs/runbooks/releases-y-multicliente.md` (fuente de verdad, incluye el estado al día
+de hoy). Resumen del **modelo destino**:
 
-- **Un solo código base (`main`).** El proyecto **demo** (`inventory-xpress-demo`)
-  auto-despliega `main`; los clientes reales **no** reciben auto-deploy: se promueve el mismo
-  build ya verificado en demo. Regla de oro: ningún cambio llega a un cliente en producción
-  sin pasar antes por demo.
+- **Un solo código base (`main`) y una rama puntero por cliente.** `main` despliega
+  automáticamente **solo** al demo (`inventory-xpress-demo`). Cada cliente tendrá una rama
+  `client/<slug>` sin código propio, que solo avanza por fast-forward desde `main`
+  (`node scripts/promote-client.mjs <slug> --si`); su proyecto Vercel tendrá esa rama como
+  Production Branch. Regla de oro: ningún cambio debe llegar a un cliente sin pasar antes por
+  demo y sin una promoción explícita. `scripts/check-client-branches.mjs` verifica en CI que
+  ninguna rama de cliente haya divergido. **Este modelo todavía no está en vigor para
+  Cucina dei Fiori**: falta ejecutar el cutover manual (crear `client/cucina-dei-fiori` y
+  repuntar la Production Branch de `inventory-xpress-fiori`), así que hoy cada merge a
+  `main` sigue desplegando directo a su producción. Antes de asumir aislamiento entre
+  clientes, confirma el estado real en el runbook.
 - **Feature flags por cliente:** `NEXT_PUBLIC_FEATURE_COCKTAILS` y
   `NEXT_PUBLIC_FEATURE_DAILY_INV` OFF por defecto; cada proyecto Vercel los enciende si
   aplica. Cambiarlos requiere rebuild.
@@ -785,7 +800,11 @@ Ver `docs/runbooks/releases-y-multicliente.md` (fuente de verdad). Resumen:
 - La **passphrase de backups** es irrecuperable si se pierde: guárdela en un gestor de
   contraseñas. La retención real depende del ajuste del repositorio (Settings → Actions →
   Artifact and log retention ≥ 180 días).
-- **Lint/tipos:** `pnpm lint` y `pnpm build` (que corre `prisma generate` + `next build`).
+- **Lint/tipos:** `pnpm lint` y `pnpm build` (que corre `scripts/verify-client-flags.mjs` +
+  `prisma generate` + `next build`; el primer paso falla el build si es una rama de cliente
+  y sus feature flags no coinciden con `clients/registry.json`).
+- **CI:** `.github/workflows/ci.yml` corre en cada PR y push a `main` `tsc`, ESLint (0 errores),
+  `pnpm test` (Vitest), `pnpm build` y `pnpm audit --prod --audit-level critical`, sin secretos.
 - **Antes de promover a un cliente:** correr las baterías E2E de §11.1 contra el dev server
   en standalone (`e2e-full-suite` como regresión y la batería de la función tocada).
 - **Documentación:** al añadir una funcionalidad, actualizar este documento, el
@@ -846,7 +865,7 @@ Detectadas durante la revisión de la documentación y del código (estado a 202
 | 3 | `docs/GUIA_PERMISOS_GRANULARES.md` y `docs/NOMINA-SYNC-PERMISOS-CATEGORIAS.md` decían "10 claves"; el código tiene **12** (`products:hard_delete`, `audit:view`). | **Corregido**: ambos documentos actualizados; la guía quedó marcada como histórica. |
 | 4 | El módulo de control por botella evolucionó más allá de su spec de diseño (movimientos `ENTRY`/`EXIT`/`BOTTLE_ADJUST`, "Vaciar", `bottleStock`). | **Documentado**: los specs quedan como registro histórico; este documento refleja el código real. |
 | 5 | `clients/registry.json` marcaba `cucina-dei-fiori` como `active: false` (aprovisionamiento de su BD pendiente), mientras la doc de backups lo usaba como ejemplo activo. | **Resuelto**: el cliente ya está `active: true` en el registro. |
-| 6 | El panel de Auditoría (`ACTION_LABEL`/`ACTION_BADGE` en `src/app/(dashboard)/auditoria/page.tsx`) no incluye `movement.edit` ni `movement.delete`: esos eventos se registran y se listan, pero muestran la clave cruda y **no** aparecen en el desplegable de filtro por acción (que se construye a partir de ese mismo catálogo). | **Pendiente**: añadir ambas claves al catálogo. |
+| 6 | Los diccionarios `ACTION_LABEL`/`ACTION_BADGE` de `/auditoria` no incluían `movement.edit` ni `movement.delete` (registradas en `PATCH`/`DELETE` de `/api/movements/[id]`): se mostraban con la clave cruda y no aparecían en el filtro por acción. | **Corregido**: ambas claves añadidas a los dos diccionarios. |
 | 7 | El encabezado de `prisma/e2e-full-suite.ts` indicaba ejecutarlo como `prisma/_e2e-full-suite.ts` (nombre con guion bajo que ya no existe). | **Corregido**: comentario actualizado al nombre real. |
 
 Si detecta nuevas discrepancias entre este documento y el código, prevalece el **código en

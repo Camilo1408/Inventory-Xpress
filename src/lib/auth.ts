@@ -63,7 +63,9 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           where: { id: token.sub },
           include: { customRole: true },
         });
-        if (dbUser) {
+        // Un usuario desactivado pierde el acceso en su siguiente request, igual que
+        // uno borrado (antes solo el borrado lo perdía; I-H1 del Plan de Calidad).
+        if (dbUser && dbUser.active) {
           const perms = resolveUserPermissions(dbUser);
           session.user.role = dbUser.role;
           session.user.username = dbUser.username;
@@ -71,7 +73,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           session.user.inventoryPermissions = perms;
           session.user.inventoryAccess = perms.length > 0;
         } else {
-          // Usuario borrado → sin acceso.
+          // Usuario borrado o desactivado → sin acceso.
           session.user.inventoryPermissions = [];
           session.user.inventoryAccess = false;
         }

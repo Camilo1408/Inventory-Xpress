@@ -1,0 +1,40 @@
+name: Ramas puntero de cliente
+
+on:
+  push:
+    branches: [main, "client/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    name: Registro, flags y ramas puntero
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Necesario para merge-base contra origin/main y los refs de cliente.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Traer los refs remotos
+        run: git fetch origin --prune
+
+      - name: Tests de las herramientas multi-cliente
+        run: |
+          node scripts/test-client-registry.mjs
+          node scripts/test-verify-client-flags.mjs
+          node scripts/test-check-client-branches.mjs
+          node scripts/test-promote-client.mjs
+
+      - name: Ninguna rama de cliente divergió de main
+        run: node scripts/check-client-branches.mjs
