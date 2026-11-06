@@ -8,6 +8,9 @@ Sistema web de gestión de inventario para cualquier negocio que maneje insumos 
 - `pnpm build` — Build de producción
 - `pnpm lint` — ESLint
 - `pnpm test` — Vitest (unit tests)
+- `pnpm docs:pdf` — Regenera `DOCUMENTACION_COMPLETA_DEL_PROYECTO.pdf` y `MANUAL_DE_USUARIO.pdf`
+  desde sus `.md` (Chrome o Edge headless; `CHROME_PATH` para otro). Correrlo en el mismo cambio
+  que toque esos `.md` o `docs/img/`.
 - CI (`.github/workflows/ci.yml`) en cada PR y push a `main`: `tsc`, ESLint con **0 errores**,
   Vitest, `pnpm build` y `pnpm audit --prod --audit-level critical`. Sin secretos: SQLite vacía.
 - `npx prisma generate` — Regenerar cliente Prisma tras cambios de schema

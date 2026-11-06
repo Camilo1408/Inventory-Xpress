@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "seed": "tsx prisma/seed.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "docs:pdf": "node scripts/build-docs-pdf.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
@@ -51,6 +52,7 @@
     "dotenv": "^17.4.2",
     "eslint": "^9.39.5",
     "eslint-config-next": "16.4.5",
+    "marked": "18.0.7",
     "prisma": "^7.10.1",
     "tailwindcss": "^4.3.4",
     "tsx": "^4.23.15",
