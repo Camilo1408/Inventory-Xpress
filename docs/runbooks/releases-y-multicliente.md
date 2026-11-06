@@ -1,161 +1,144 @@
 # Runbook: Releases y modelo multi-cliente
 
-Este documento describe las tres operaciones recurrentes del modelo SaaS-por-cliente
-de Inventario Xpress: consolidar la rama histórica `deploy-fiori`, el flujo de release
-normal (demo → clientes reales), y el alta de un cliente nuevo.
+Inventory Xpress se despliega **una instancia por cliente**, todas desde el mismo código
+(`main`). La diferencia entre clientes es **configuración** (env vars + feature flags),
+nunca código.
 
-Contexto: la diferencia entre clientes es **configuración**, no código (ver
-`src/lib/config.ts`). Los feature flags (`NEXT_PUBLIC_FEATURE_COCKTAILS`,
-`NEXT_PUBLIC_FEATURE_DAILY_INV`) están **OFF por defecto** en el código de `main`;
-cada proyecto Vercel de cliente los enciende seteando esas env vars en `true`.
+> **⚠️ Estado real a día de hoy: el cutover NO se ha ejecutado.** Las ramas `client/<slug>`
+> todavía no existen en el remoto y el proyecto Vercel de Cucina dei Fiori
+> (`inventory-xpress-fiori`) sigue con su Production Branch en `main`. Eso significa que,
+> **hoy, cada merge a `main` despliega directamente a producción de Fiori** — exactamente lo
+> que este modelo busca evitar. Hasta que se ejecute el cutover (Task 8 del plan de
+> implementación), todo lo que sigue en este documento describe el modelo **destino**, no el
+> vigente. Antes de promover o de asumir aislamiento entre clientes, confirma el estado real
+> con `node scripts/check-client-branches.mjs` y con la Production Branch configurada en cada
+> proyecto Vercel.
 
----
+## Modelo: ramas puntero
 
-## Fase 0 — Consolidar `deploy-fiori` → `main`
+| Rama | Qué es | Quién despliega desde ella |
+|---|---|---|
+| `main` | Única rama de desarrollo. Todo PR mergea aquí. | `inventory-xpress-demo` (auto-deploy) |
+| `client/<slug>` | **Puntero de release.** No lleva código propio: solo avanza por fast-forward desde `main`. | El proyecto Vercel de ese cliente |
 
-`deploy-fiori` es la rama histórica desde la que hoy se despliega el proyecto Vercel
-de Cucina dei Fiori. Contiene ajustes que nunca se mergearon a `main`. Antes de operar
-el modelo multi-cliente hay que consolidarla una sola vez.
+Un cliente nunca recibe un cambio por mergear a `main`: lo recibe cuando alguien **promueve**
+su rama puntero. Eso es lo que aísla a los clientes de un deploy roto.
 
-### Pasos
+**Las ramas de cliente no aceptan commits propios.** Si un cliente necesita algo distinto,
+va detrás de un feature flag en `main`, no en su rama. `scripts/check-client-branches.mjs`
+corre en CI y falla si alguna divergió.
 
-1. **Revisar el diff completo entre `main` y `deploy-fiori`:**
-
-   ```bash
-   git fetch origin
-   git diff main deploy-fiori
-   ```
-
-   Revisar commit por commit si el diff es grande:
-
-   ```bash
-   git log main..deploy-fiori --oneline
-   ```
-
-2. **Decidir qué es "oficial"** para cada cambio encontrado:
-   - Si es un fix o mejora general (aplica a todos los clientes) → se debe mergear a `main`.
-   - Si es algo específico de Fiori que ya está cubierto por un flag/config (branding,
-     `cocktails`, `dailyInventory`) → no se mergea el código viejo, se confirma que el
-     equivalente en `main` está detrás del flag correcto.
-   - Si es algo específico de Fiori que **no** tiene equivalente en `main` → evaluar si
-     debe convertirse en un flag nuevo o en config de `clients/registry.json`, no dejarlo
-     hardcodeado.
-
-3. **Mergear a `main`** lo que se decidió oficial (vía PR normal, ver sección siguiente
-   para el flujo estándar). No mergear `deploy-fiori` completa de un solo golpe si mezcla
-   cambios oficiales con cambios específicos de Fiori.
-
-4. **Repuntar el proyecto Vercel de Fiori a `main`:**
-   - En el dashboard de Vercel, proyecto `inventory-cucina-dei-fiori` (scope
-     `cesicami-5234s-projects`) → Settings → Git → cambiar la Production Branch de
-     `deploy-fiori` a `main`.
-
-> **ADVERTENCIA CRÍTICA — leer antes de repuntar:**
-> Antes del **primer deploy de Fiori desde `main`**, hay que setear en el proyecto
-> Vercel de Fiori (`inventory-cucina-dei-fiori`) las env vars:
->
-> ```
-> NEXT_PUBLIC_FEATURE_COCKTAILS=true
-> NEXT_PUBLIC_FEATURE_DAILY_INV=true
-> ```
->
-> Estos flags están **OFF por defecto** en el código de `main` (ver
-> `src/lib/config.ts`). Si se repunta la Production Branch a `main` sin haber
-> configurado antes estas env vars en el proyecto de Fiori, el próximo deploy
-> **pierde el control de cócteles y el inventario diario** para ese cliente en
-> producción. Configurar las env vars es un paso manual en el dashboard de Vercel,
-> el código no las setea solo.
->
-> Orden correcto: 1) setear las env vars en el proyecto Vercel de Fiori, 2) recién
-> después cambiar la Production Branch a `main` (o forzar un redeploy).
-
-5. Una vez repuntado y verificado en producción que Fiori conserva cócteles + inventario
-   diario, `deploy-fiori` queda congelada como referencia histórica (no se le vuelven a
-   hacer commits).
-
----
-
-## Flujo de release normal
-
-Regla de oro: **ningún bug llega a un cliente en producción sin pasar antes por demo.**
+## Flujo de release
 
 ```
-feature branch → PR → merge a main → auto-deploy SOLO a demo → verificar en demo → promover a clientes reales
+feature branch → PR → merge a main → auto-deploy SOLO a demo → verificar → promover a cada cliente
 ```
 
-### Pasos
-
-1. **Feature branch:** trabajar en una rama a partir de `main` (`git checkout -b feat/...`).
-
-2. **PR:** abrir PR contra `main`. Revisar `pnpm build && pnpm lint` en verde antes de
-   pedir merge.
-
-3. **Merge a `main`.**
-
-4. **Auto-deploy solo a demo:** el único proyecto Vercel conectado a auto-deploy de
-   `main` es `inventory-xpress-demo` (scope `cesicami-5234s-projects`), disponible en
-   `https://inventory-xpress-demo.vercel.app`. Los proyectos de clientes reales
-   (por ejemplo `inventory-cucina-dei-fiori`) **no** se despliegan automáticamente en
-   cada push a `main` — solo reciben el build cuando se promueve explícitamente
-   (paso 6). Esto es intencional: aísla a los clientes reales de un deploy roto.
-
-5. **Verificar en demo:** entrar a `https://inventory-xpress-demo.vercel.app` y
-   confirmar que el cambio funciona como se espera, y que las features del demo
-   (cócteles + inventario diario) siguen intactas.
-
-6. **Promover el mismo build a clientes reales:** una vez verificado en demo, promover
-   exactamente ese build (no un rebuild) a cada proyecto Vercel de cliente activo,
-   usando uno de:
-   - CLI: `vercel promote <deployment-url-o-id> --scope cesicami-5234s-projects`
-     ejecutado apuntando al proyecto del cliente correspondiente.
-   - Dashboard: botón "Promote to Production" sobre el deployment ya verificado, desde
-     la pestaña Deployments del proyecto del cliente.
-
-   Repetir la promoción para cada cliente activo en `clients/registry.json`.
-
-Si en el paso 5 algo falla, el fix se hace en una nueva rama y se repite el flujo desde
-el paso 1 — nunca se promueve un build que no pasó por demo.
-
----
-
-## Alta de cliente nuevo
-
-1. **Ejecutar el script de aprovisionamiento**, con las credenciales de la organización
-   Turso en el entorno:
+1. **Trabajo normal:** rama desde `main`, PR, `pnpm lint` y `pnpm build` en verde, merge.
+2. **El demo se despliega solo** en https://inventory-xpress-demo.vercel.app.
+3. **Verificar en demo.** Ojo: el demo corre en `standalone` y Fiori en `integrated`; lo que
+   dependa de permisos del JWT de Nómina no queda probado ahí.
+4. **Promover a un cliente:**
 
    ```bash
-   TURSO_API_TOKEN=<token> TURSO_ORG=<org> node scripts/provision-client.mjs <slug>
+   node scripts/promote-client.mjs cucina-dei-fiori        # simulación: muestra qué entra
+   node scripts/promote-client.mjs cucina-dei-fiori --si   # ejecuta el fast-forward
    ```
 
-   El script (`scripts/provision-client.mjs`):
-   - Crea la base de datos Turso `inventory-<slug>`.
-   - Emite un token de esa base.
-   - Aplica el schema de Prisma (`prisma migrate diff` + `scripts/apply-turso-sql.mjs`).
-   - Corre el seed inicial (`npx tsx prisma/seed.ts`).
-   - Imprime un checklist de pasos manuales restantes.
+   El script empuja el sha de `origin/main` al ref del cliente. Si la rama divergió, GitHub
+   rechaza el push por no ser fast-forward: es la red de seguridad, no la saltes con `--force`.
+5. **Verificar la producción del cliente** en su dominio.
 
-2. **Seguir el checklist impreso por el script**, que incluye:
-   1. Crear el proyecto Vercel enlazado al repo (rama de producción = `main`).
-   2. Setear en ese proyecto las env vars: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`
-      (el token emitido por el script), `NEXTAUTH_SECRET` (uno único para el cliente),
-      `AUTH_MODE=standalone`, y los feature flags/branding que correspondan al cliente
-      (recordar que `NEXT_PUBLIC_FEATURE_COCKTAILS` y `NEXT_PUBLIC_FEATURE_DAILY_INV`
-      son OFF por defecto — encenderlos explícitamente si el cliente los necesita).
-   3. Configurar el subdominio y el CNAME en DNS.
-   4. Agregar la entrada del cliente en `clients/registry.json`.
-   5. Guardar el token de la base como secret de GitHub.
+### Rollback
 
-3. **Agregar la entrada en `clients/registry.json`** con los campos: `slug`,
-   `displayName`, `domain`, `vercelProject`, `tursoDatabase`, `features`, `active`.
+En Vercel → proyecto del cliente → Deployments → **Instant Rollback** al deployment anterior.
+El rollback es de Vercel, no de git: la rama puntero se queda donde está y se corrige en el
+siguiente release.
 
-4. **Guardar el token del cliente como secret de GitHub** con la convención de nombre:
+## Feature flags
 
-   ```
-   TURSO_TOKEN_<SLUG_EN_MAYUSCULAS_CON_GUION_BAJO>
-   ```
+Declarados por cliente en `clients/registry.json` (campo `features`) y encendidos con env
+vars en su proyecto Vercel:
 
-   Ejemplo: slug `cucina-dei-fiori` → secret `TURSO_TOKEN_CUCINA_DEI_FIORI`.
+| Feature en el registro | Env var en Vercel | Qué activa |
+|---|---|---|
+| `cocktails` | `NEXT_PUBLIC_FEATURE_COCKTAILS=true` | Control de licores por nivel de botella |
+| `dailyInventory` | `NEXT_PUBLIC_FEATURE_DAILY_INV=true` | Apertura/cierre de jornada de inventario diario |
 
-5. Una vez creado el proyecto Vercel del cliente, este **no** recibe auto-deploy en cada
-   push a `main` (ver "Flujo de release normal"): su primer y siguientes deploys llegan
-   por promoción explícita desde un build ya verificado en demo.
+Ambos están **OFF por defecto** en el código. `scripts/verify-client-flags.mjs` corre al
+inicio de `pnpm build` y **falla el build** si los flags del entorno no coinciden con lo
+declarado en el registro — en las dos direcciones (falta una declarada, o hay una encendida
+sin declarar). Así no se puede repetir el incidente de desplegar un cliente y apagarle
+funciones en producción sin darse cuenta.
+
+Cambiar un flag requiere **redeploy** (las `NEXT_PUBLIC_*` se hornean en el bundle).
+
+**Orden obligatorio al activar una feature para un cliente:** primero se setea la env var
+correspondiente en el proyecto Vercel del cliente, **y solo después** se declara la feature
+en `clients/registry.json` y se promueve. Al revés (declarar primero y promover sin la env
+var puesta), la promoción rompe el build del cliente: `verify-client-flags.mjs` lo detecta
+y hace fallar el build (falla segura), pero deja la producción del cliente congelada en el
+commit anterior hasta que se corrija el orden. Nota: mientras la env var ya está encendida
+y la feature todavía no está declarada en el registro, el cliente queda en una ventana
+abierta — cualquier otra promoción de ese mismo cliente durante ese interín también falla
+el build, ahora por el chequeo en la dirección contraria (`verify-client-flags.mjs` ve un
+flag "en true" que el registro no declara). Cierra esa ventana en el mismo release: declara
+la feature y promueve tan pronto como sea posible después de setear la env var, no la dejes
+a medias entre un release y el siguiente.
+
+Para añadir una feature nueva: agregarla a `FEATURE_ENV` en `scripts/lib/features.mjs` y
+leerla en `src/lib/config.ts`. El test `scripts/test-client-registry.mjs` falla si un lado
+se desincroniza del otro.
+
+Un cliente con `active: false` en `clients/registry.json` queda **fuera** de las
+verificaciones de drift (`check-client-branches.mjs`) y del preflight de backup
+(`backup-preflight.mjs`). Dar de baja a un cliente ahí no apaga nada por sí solo: hay que
+desconectar también su proyecto Vercel (o al menos quitarle el dominio y las env vars) para
+que de verdad deje de servir tráfico.
+
+## Estado actual
+
+| Cliente | Slug | Rama | Proyecto Vercel | Modo | Features |
+|---|---|---|---|---|---|
+| Cucina dei Fiori | `cucina-dei-fiori` | `client/cucina-dei-fiori` ⚠️ pendiente de crear — hoy el proyecto sigue desplegando desde `main` | `inventory-xpress-fiori` | integrated | cocktails, dailyInventory |
+| Demo | `demo` | `main` | `inventory-xpress-demo` | standalone | cocktails, dailyInventory |
+
+## Configuración de Vercel por proyecto
+
+Esto es configuración **manual del proyecto en Vercel, no versionada** — no vive en este
+repo, así que conviene auditarla de vez en cuando contra esta tabla:
+
+| Proyecto Vercel | Production Branch | Ignored Build Step |
+|---|---|---|
+| `inventory-xpress-demo` | `main` | *(sin definir)* — hace falta uno que salte los builds de ramas `client/*`: `if [ "$VERCEL_GIT_COMMIT_REF" = "main" ]; then exit 1; else exit 0; fi` |
+| `inventory-xpress-fiori` | `client/cucina-dei-fiori` (destino — hoy sigue en `main`, ver aviso al inicio del documento) | `if [ "$VERCEL_GIT_COMMIT_REF" = "client/cucina-dei-fiori" ]; then exit 1; else exit 0; fi` |
+
+Sin el Ignored Build Step del demo, el proyecto `inventory-xpress-demo` construye también
+las ramas `client/*` como preview. En ese preview, `verify-client-flags.mjs` compararía los
+flags del entorno del demo contra lo declarado para *otro* cliente — el día que exista un
+cliente con menos features encendidas, eso da un build rojo por un motivo que no tiene nada
+que ver con el código. Configurar el Ignored Build Step del demo evita ese falso positivo.
+
+## Alta de un cliente nuevo
+
+```bash
+TURSO_API_TOKEN=<token> TURSO_ORG=<org> node scripts/provision-client.mjs <slug>
+```
+
+El script crea la BD Turso, aplica el schema, corre el seed e imprime el checklist completo
+(entrada del registro mergeada a main, rama puntero, proyecto Vercel, env vars, Ignored
+Build Step, DNS, secret de backup — en ese orden: la entrada debe estar en main antes de
+crear la rama puntero desde ese main, o el primer build del cliente sale rojo). Al terminar,
+verificar con:
+
+```bash
+node scripts/check-client-branches.mjs
+```
+
+## Verificaciones
+
+| Comando | Qué comprueba |
+|---|---|
+| `node scripts/check-client-branches.mjs` | Que ninguna rama de cliente divergió de `main`. Corre también en CI. |
+| `node scripts/verify-client-flags.mjs` | Que los flags del build coinciden con el registro. Corre en cada `pnpm build`. |
+| `node scripts/promote-client.mjs <slug>` | Simula la promoción y lista los commits que entrarían. |

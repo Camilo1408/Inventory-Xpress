@@ -277,7 +277,8 @@ Plantilla en `.env.example`. Copiar a `.env` (o `.env.local`) y completar:
 | `NOMINA_APP_URL` | integrated | URL de Nómina Xpress (server-side, redirects de login/logout). |
 | `NEXT_PUBLIC_NOMINA_APP_URL` | integrated | URL de Nómina Xpress (client-side, enlaces). |
 | `BLOB_READ_WRITE_TOKEN` | opcional | Token de Vercel Blob (subida de imágenes). |
-| `ROOT_DOMAIN` | prod | Dominio raíz para la cookie compartida entre subdominios. |
+| `AUTH_COOKIE_DOMAIN` | integrated/prod | Dominio de la cookie de sesión compartida con Nómina (ej. `.cucinadeifiori.com`). Lo lee `src/lib/auth.config.ts`. |
+| `APP_TIMEZONE` | opcional | Zona horaria IANA del negocio para el cálculo de la jornada (def. `America/Bogota`). |
 | `NEXT_PUBLIC_BRAND_NAME` | opcional | Nombre de marca mostrado (def. `Inventario`). |
 | `NEXT_PUBLIC_BRAND_LOGO` | opcional | URL del logo de marca. |
 | `NEXT_PUBLIC_FEATURE_COCKTAILS` | opcional | `true` activa el control por nivel de botella (**OFF** por defecto). |
@@ -665,12 +666,20 @@ Retención de **180 días** (6 meses); ver §21.
 
 ## 22. Despliegue y producción
 
-Ver `docs/runbooks/releases-y-multicliente.md` (fuente de verdad). Resumen:
+Ver `docs/runbooks/releases-y-multicliente.md` (fuente de verdad, incluye el estado al día
+de hoy). Resumen del **modelo destino**:
 
-- **Un solo código base (`main`).** El proyecto **demo** (`inventory-xpress-demo`)
-  auto-despliega `main`; los clientes reales **no** reciben auto-deploy: se promueve el mismo
-  build ya verificado en demo. Regla de oro: ningún cambio llega a un cliente en producción
-  sin pasar antes por demo.
+- **Un solo código base (`main`) y una rama puntero por cliente.** `main` despliega
+  automáticamente **solo** al demo (`inventory-xpress-demo`). Cada cliente tendrá una rama
+  `client/<slug>` sin código propio, que solo avanza por fast-forward desde `main`
+  (`node scripts/promote-client.mjs <slug> --si`); su proyecto Vercel tendrá esa rama como
+  Production Branch. Regla de oro: ningún cambio debe llegar a un cliente sin pasar antes por
+  demo y sin una promoción explícita. `scripts/check-client-branches.mjs` verifica en CI que
+  ninguna rama de cliente haya divergido. **Este modelo todavía no está en vigor para
+  Cucina dei Fiori**: falta ejecutar el cutover manual (crear `client/cucina-dei-fiori` y
+  repuntar la Production Branch de `inventory-xpress-fiori`), así que hoy cada merge a
+  `main` sigue desplegando directo a su producción. Antes de asumir aislamiento entre
+  clientes, confirma el estado real en el runbook.
 - **Feature flags por cliente:** `NEXT_PUBLIC_FEATURE_COCKTAILS` y
   `NEXT_PUBLIC_FEATURE_DAILY_INV` OFF por defecto; cada proyecto Vercel los enciende si
   aplica. Cambiarlos requiere rebuild.
@@ -691,7 +700,9 @@ Ver `docs/runbooks/releases-y-multicliente.md` (fuente de verdad). Resumen:
 - La **passphrase de backups** es irrecuperable si se pierde: guárdela en un gestor de
   contraseñas. La retención real depende del ajuste del repositorio (Settings → Actions →
   Artifact and log retention ≥ 180 días).
-- **Lint/tipos:** `pnpm lint` y `pnpm build` (que corre `prisma generate` + `next build`).
+- **Lint/tipos:** `pnpm lint` y `pnpm build` (que corre `scripts/verify-client-flags.mjs` +
+  `prisma generate` + `next build`; el primer paso falla el build si es una rama de cliente
+  y sus feature flags no coinciden con `clients/registry.json`).
 - **Documentación:** al añadir una funcionalidad, actualizar este documento, el
   [MANUAL_DE_USUARIO.md](MANUAL_DE_USUARIO.md) y, si cambia la arquitectura, `CLAUDE.md`.
 
