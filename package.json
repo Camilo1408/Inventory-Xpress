@@ -41,7 +41,11 @@
       "@prisma/engines",
       "prisma",
       "bcryptjs"
-    ]
+    ],
+    "overrides": {
+      "zod@<4.6.6": "^4.6.7",
+      "minimatch@^10": "^11.0.5"
+    }
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.4",

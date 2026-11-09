@@ -4,10 +4,11 @@ import path from "path";
 // Cabeceras de seguridad para todas las respuestas (hallazgo I-H6 del Plan de Calidad).
 // Las mismas que usa Nómina Xpress, ajustadas a Vercel Blob (imágenes de productos).
 //
-// La CSP va primero en modo REPORT-ONLY: el navegador avisa en la consola de lo que
-// bloquearía, pero no bloquea nada. Así se valida contra el uso real en producción sin
-// riesgo de romper el inventario; cuando la consola quede limpia se cambia la clave a
-// "Content-Security-Policy" para que se aplique.
+// La CSP estuvo primero en modo Report-Only (06/11) y se aplica desde el 09/11: se
+// recorrieron todas las páginas del modo integrado sin ninguna violación (detectadas
+// con ReportingObserver) y Nómina usa la misma política aplicada sin problemas. Si una
+// función nueva necesita otro origen (un CDN, una API externa), agregarlo aquí y
+// verificarlo; un origen nuevo se bloquea por defecto.
 const contentSecurityPolicy = [
   "default-src 'self'",
   "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com",
@@ -28,7 +29,7 @@ const securityHeaders = [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   // La cámara se permite al propio origen: la carga de fotos de productos puede usarla.
   { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=()" },
-  { key: "Content-Security-Policy-Report-Only", value: contentSecurityPolicy },
+  { key: "Content-Security-Policy", value: contentSecurityPolicy },
 ];
 
 const nextConfig: NextConfig = {
