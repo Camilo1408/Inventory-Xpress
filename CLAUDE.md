@@ -7,7 +7,10 @@ Sistema web de gestión de inventario para cualquier negocio que maneje insumos 
 - `pnpm dev` — Servidor de desarrollo en localhost:3001
 - `pnpm build` — Build de producción
 - `pnpm lint` — ESLint
-- `pnpm test` — Vitest (unit tests)
+- `pnpm test` — Vitest: pruebas unitarias y de integración. Las `*.db.test.ts` corren contra una
+  **SQLite real** (no mocks): `vitest.global-setup.ts` crea una base plantilla con `prisma db push`
+  y cada archivo trabaja sobre su copia. Su primer import debe ser `@/test/db`, que fija
+  `TURSO_DATABASE_URL` antes de que cargue `@/lib/db`. Nunca tocan `inventario.db` ni Turso.
 - `pnpm docs:pdf` — Regenera `DOCUMENTACION_COMPLETA_DEL_PROYECTO.pdf` y `MANUAL_DE_USUARIO.pdf`
   desde sus `.md` (Chrome o Edge headless; `CHROME_PATH` para otro). Correrlo en el mismo cambio
   que toque esos `.md` o `docs/img/`.
@@ -158,6 +161,8 @@ cifrada con `NEXTAUTH_SECRET` y `SESSION_CHECK_SALT`, que debe ser idéntica en 
 
 1. **TypeScript strict sin `any`.** El contrato de integración depende de tipos correctos en el JWT payload.
 2. **`currentStock` solo se modifica dentro de una transacción Prisma** que también crea el `StockMovement`. Nunca actualizar el stock sin registro del movimiento.
+   Lo vigilan `movements.db.test.ts` y `daily-inventory.db.test.ts` (reglas RN-I01 a RN-I08): toda ruta
+   nueva que mueva stock agrega ahí su caso, con la comprobación `expectLedger` (stock = partida + Σ movimientos).
 3. **No crear tabla de usuarios en modo integrated.** `userId` y `userName` en movimientos son strings copiados del JWT, no foreign keys.
 4. **Verificar permisos explícitamente en cada API route** — el proxy no protege llamadas directas a `/api`.
    **Todo cuerpo pasa por Zod:** `parseBody(req, schema)` de `@/lib/api-body` (nunca

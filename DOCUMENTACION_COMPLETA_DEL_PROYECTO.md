@@ -2,11 +2,12 @@
 
 > Documento técnico para desarrolladores y mantenedores. Para el uso funcional del
 > sistema por parte del cliente, ver [MANUAL_DE_USUARIO.md](MANUAL_DE_USUARIO.md).
-> Última revisión de contenido contra el código: **2026-07-31** (incluye corrección y
+> Última revisión de contenido contra el código: **2026-11-09** (incluye corrección y
 > eliminación de movimientos manuales, cierre de botellas con estado vivo y rastro
 > `daily_close_bottle`, "Esperado" con ajustes manuales, baterías E2E de `prisma/`,
 > paginación/filtros de productos, edición y descarte de jornada abierta, fracciones en
-> conteos e indicador shots/copeo).
+> conteos, indicador shots/copeo, verificación de sesión contra Nómina, CI obligatorio y
+> pruebas automáticas de las reglas de negocio).
 
 ## Tabla de contenido
 
@@ -207,7 +208,7 @@ inventario-restaurante/
 │   ├── seed.ts                # Datos iniciales: categorías demo + 3 usuarios por rol
 │   ├── backfill-*.ts          # Scripts puntuales de migración de datos
 │   ├── e2e-full-suite.ts      # Batería E2E general (login, permisos, módulos)
-│   └── test-*.ts              # Baterías E2E por función (ver §11.1)
+│   └── test-*.ts              # Baterías E2E por función (ver §11.2)
 ├── prisma.config.ts           # Config Prisma (URL de la BD, seed, migraciones)
 ├── clients/registry.json      # Índice de clientes (sin secretos)
 ├── scripts/
@@ -314,10 +315,36 @@ pnpm dev      # http://localhost:3001
 Otros comandos: `pnpm build` (incluye `prisma generate`), `pnpm start`, `pnpm lint`,
 `pnpm seed`, `npx prisma db push`, `npx prisma generate`. Credenciales demo: ver §15.6.
 
-### 11.1 Baterías E2E (`prisma/*.ts`)
+### 11.1 Pruebas automáticas (Vitest)
 
-No hay framework de tests (Jest/Vitest/Playwright): la verificación se hace con **scripts
-E2E propios** que se ejecutan con `tsx` contra el **servidor de desarrollo en standalone**
+`pnpm test` corre la suite de Vitest, que el CI exige en cada Pull Request. Tiene dos tipos
+de prueba:
+
+- **Unitarias** (`src/lib/__tests__/`): lógica pura de botellas, fracciones, fechas de la
+  jornada, permisos y validación de cuerpos.
+- **De integración** (`*.db.test.ts`): llaman a los handlers de las rutas contra una
+  **SQLite real**, sin mocks de Prisma. `vitest.global-setup.ts` crea una base plantilla con
+  `prisma db push` y cada archivo de prueba trabaja sobre su propia copia
+  (`src/test/db.ts`), así que corren en paralelo y nunca tocan `inventario.db` ni Turso.
+
+Las de integración cubren las reglas de negocio del Plan de Calidad:
+
+| Regla | Qué fija | Archivo |
+|---|---|---|
+| RN-I01 | `currentStock` cambia solo junto con su `StockMovement`, en la misma transacción (se provoca un fallo real con un trigger de SQLite y se comprueba que no queda nada a medias) | `movements.db.test.ts`, `daily-inventory.db.test.ts` |
+| RN-I02, RN-I03 | El conteo inicial se concilia contra el stock de inicio del día; un ingreso previo a la apertura no se cuenta dos veces | `daily-inventory.db.test.ts` |
+| RN-I04 | Stock de un licor = reserva + 1 si hay botella abierta | `bottle.test.ts`, `movements.db.test.ts` |
+| RN-I05 | Decimales con coma, fracciones y números mixtos | `numeric.test.ts` |
+| RN-I06 | Alerta cuando `currentStock ≤ minStock` | `alerts.db.test.ts`, `bottle.test.ts` |
+| RN-I07 | Autorización por clave `inventory:*`, no por rol | `permissions.test.ts` y las tres de integración |
+| RN-I08 | Corregir o eliminar un movimiento exige `inventory:movements:edit` y queda en auditoría | `movements.db.test.ts` |
+
+Toda prueba de integración termina con `expectLedger`: el stock actual debe ser igual al
+stock de partida más la suma de sus movimientos.
+
+### 11.2 Baterías E2E manuales (`prisma/*.ts`)
+
+Además de Vitest hay **scripts E2E propios**, fuera del CI, que se ejecutan con `tsx` contra el **servidor de desarrollo en standalone**
 (`AUTH_MODE=standalone`, `pnpm dev` en :3001) y la **BD local sembrada** (`pnpm seed`).
 Cada script inicia sesión por HTTP con los usuarios demo, ejerce la API real y limpia lo
 que crea.
@@ -805,7 +832,7 @@ de hoy). Resumen del **modelo destino**:
   y sus feature flags no coinciden con `clients/registry.json`).
 - **CI:** `.github/workflows/ci.yml` corre en cada PR y push a `main` `tsc`, ESLint (0 errores),
   `pnpm test` (Vitest), `pnpm build` y `pnpm audit --prod --audit-level critical`, sin secretos.
-- **Antes de promover a un cliente:** correr las baterías E2E de §11.1 contra el dev server
+- **Antes de promover a un cliente:** correr las baterías E2E de §11.2 contra el dev server
   en standalone (`e2e-full-suite` como regresión y la batería de la función tocada).
 - **Documentación:** al añadir una funcionalidad, actualizar este documento, el
   [MANUAL_DE_USUARIO.md](MANUAL_DE_USUARIO.md) y, si cambia la arquitectura, `CLAUDE.md`.
@@ -821,14 +848,15 @@ de hoy). Resumen del **modelo destino**:
 - **Autoriza por permiso efectivo**, no por rol literal.
 - Los **feature flags nuevos** deben cortar en las 3 capas (navegación, ruta, API).
 - El `slug` de categoría es la clave del contrato de permisos: **no** cambiarlo al renombrar.
-- No hay framework de tests unitarios: verificar con `pnpm build` + `pnpm lint` y las
-  **baterías E2E de `prisma/`** (§11.1). Al añadir una función con reglas de stock, deje su
-  batería `prisma/test-<función>.ts` como regresión permanente.
+- Verificar con `pnpm test` (§11.1), `pnpm build` y `pnpm lint`; el CI exige los tres. Al añadir
+  una función con reglas de stock, deje su caso en las pruebas de integración `*.db.test.ts`
+  como regresión permanente.
 
 ## 25. Limitaciones actuales
 
-- **Sin framework de tests ni CI de pruebas:** solo hay baterías E2E ejecutadas a mano
-  (§11.1), que además exigen dev server en standalone y BD local sembrada.
+- **Sin pruebas E2E de navegador en el CI:** Vitest cubre la lógica y las rutas contra una
+  base real (§11.1), pero las baterías E2E de `prisma/` (§11.2) siguen ejecutándose a mano y
+  exigen dev server en standalone y BD local sembrada.
 - **Los cambios de permisos en integrado exigen re-login:** la clave
   `inventory:movements:edit` ya la emite Nómina Xpress (desde el 2026-07-26), pero un `ADMIN`
   que no haya vuelto a iniciar sesión seguirá sin ver "Corregir movimientos" hasta que su JWT
