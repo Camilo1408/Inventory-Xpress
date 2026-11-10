@@ -63,3 +63,68 @@ jobs:
 
       - name: Dependencias de producción sin vulnerabilidades críticas
         run: pnpm audit --prod --audit-level critical
+
+  integracion:
+    # Fase 2: las dos aplicaciones reales en modo integrado (cookie compartida, verificación
+    # de sesión y revocación entre Nómina e Inventory). Las pruebas viven en Nómina Xpress
+    # (`e2e-integracion/`), que es un repositorio público: no hace falta ningún token.
+    # Es el mismo job que corre el CI de Nómina, pero aquí con el código de ESTE cambio:
+    # si falla sin que Nómina haya cambiado, el cambio que rompió el contrato está aquí.
+    name: Integración con Nómina
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: nomina
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: inventory
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Camilo1408/Nomina-Xpress
+          ref: main
+          path: nomina
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Instalar dependencias de Nómina
+        run: npm ci
+
+      - name: Instalar dependencias de Inventory
+        working-directory: inventory
+        run: pnpm install --frozen-lockfile
+
+      - name: Instalar Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build de Nómina (modo integrado)
+        run: env $(node e2e-integracion/env.mjs nomina | xargs) npm run build
+
+      - name: Build de Inventory (modo integrado)
+        working-directory: inventory
+        run: env $(node ../nomina/e2e-integracion/env.mjs inventory | xargs) pnpm build
+
+      - name: Pruebas de integración
+        run: npm run test:e2e:integracion
+        env:
+          INVENTORY_DIR: ../inventory
+
+      - name: Guardar el informe si algo falla
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-integracion
+          path: |
+            nomina/playwright-report/
+            nomina/test-results/
+          retention-days: 7

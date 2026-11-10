@@ -16,6 +16,10 @@ Sistema web de gestión de inventario para cualquier negocio que maneje insumos 
   que toque esos `.md` o `docs/img/`.
 - CI (`.github/workflows/ci.yml`) en cada PR y push a `main`: `tsc`, ESLint con **0 errores**,
   Vitest, `pnpm build` y `pnpm audit --prod --audit-level critical`. Sin secretos: SQLite vacía.
+  Un segundo job, **Integración con Nómina**, levanta las dos aplicaciones en modo integrado con
+  la rama `main` de Nómina Xpress y corre sus pruebas de `e2e-integracion/` (entrada desde Nómina,
+  permisos por rol y revocación de sesión). Si falla sin que Nómina haya cambiado, el contrato
+  lo rompió el cambio de este repositorio.
 - `npx prisma generate` — Regenerar cliente Prisma tras cambios de schema
 - `npx prisma db push` — Aplicar schema a la DB (dev local)
 - `npx tsx prisma/seed.ts` — Insertar datos iniciales (categorías + usuarios demo por rol)
