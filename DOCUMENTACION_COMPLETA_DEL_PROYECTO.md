@@ -668,7 +668,7 @@ backup). Ver `docs/runbooks/releases-y-multicliente.md`.
 - `ENTRY`: `quantity` positiva; incrementa `currentStock`.
 - `EXIT`: `quantity` negativa; decrementa. **No** se permite dejar el stock por debajo de 0.
 - `ADJUSTMENT`: delta con signo (positivo aumenta, negativo disminuye); requiere
-  `canAdjustStock`.
+  `canAdjustStock`. Un ajuste negativo tampoco puede dejar el stock por debajo de 0 (**400**).
 - El `currentStock` y el `StockMovement` se escriben siempre juntos en una transacción.
 
 **Corrección de movimientos manuales** (§14.3):

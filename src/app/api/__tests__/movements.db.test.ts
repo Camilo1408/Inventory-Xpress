@@ -146,6 +146,29 @@ describe("POST /api/movements — productos numéricos", () => {
     expect((await expectLedger(harina.id, 10)).currentStock).toBe(8);
   });
 
+  it("[NEG] un ajuste negativo mayor que el stock responde 400 y no deja rastro", async () => {
+    session = testUser([COUNT, ADJUST]);
+    const res = await move({ productId: harina.id, type: "ADJUSTMENT", quantity: -10.5 });
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ error: "Stock insuficiente" });
+    expect(await prisma.stockMovement.count()).toBe(0);
+    expect((await expectLedger(harina.id, 10)).currentStock).toBe(10);
+  });
+
+  it("[LIM] un ajuste negativo por todo el stock lo deja exactamente en 0", async () => {
+    session = testUser([COUNT, ADJUST]);
+    expect((await move({ productId: harina.id, type: "ADJUSTMENT", quantity: -10 })).status).toBe(201);
+    expect((await expectLedger(harina.id, 10)).currentStock).toBe(0);
+  });
+
+  it("[NEG] una salida con cantidad negativa también se valida contra el stock", async () => {
+    // -15 se normaliza a una salida de 15: antes pasaba la validación (10 - (-15) >= 0).
+    const res = await move({ productId: harina.id, type: "EXIT", quantity: -15 });
+    expect(res.status).toBe(400);
+    expect(await prisma.stockMovement.count()).toBe(0);
+    expect((await expectLedger(harina.id, 10)).currentStock).toBe(10);
+  });
+
   it("[NEG] un producto inactivo o inexistente responde 404", async () => {
     await prisma.product.update({ where: { id: harina.id }, data: { active: false } });
     expect((await move({ productId: harina.id, type: "ENTRY", quantity: 1 })).status).toBe(404);

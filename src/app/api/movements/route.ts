@@ -246,14 +246,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Sin permiso para ajustes" }, { status: 403 });
   }
 
-  if (body.type === "EXIT" && product.currentStock - body.quantity < 0) {
-    return NextResponse.json({ error: "Stock insuficiente" }, { status: 400 });
-  }
-
   const quantityDelta =
     body.type === "ENTRY"      ?  Math.abs(body.quantity) :
     body.type === "EXIT"       ? -Math.abs(body.quantity) :
     body.quantity;
+
+  // Ningún movimiento manual deja el stock en negativo. Se valida sobre el delta ya
+  // normalizado: cubre la salida, el ajuste negativo y una salida con cantidad negativa.
+  if (quantityDelta < 0 && product.currentStock + quantityDelta < 0) {
+    return NextResponse.json({ error: "Stock insuficiente" }, { status: 400 });
+  }
 
   const [movement, updatedProduct] = await prisma.$transaction([
     prisma.stockMovement.create({
