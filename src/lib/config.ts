@@ -11,6 +11,12 @@ export const config = {
   // El servidor corre en UTC; sin esto el día saltaría a las 19:00 hora de Colombia.
   // Un cliente en otra zona la cambia con APP_TIMEZONE (IANA, ej. "America/Mexico_City").
   timezone: process.env.APP_TIMEZONE?.trim() || "America/Bogota",
+  // Hora a la que empieza la jornada operativa (0–12). El restaurante trabaja pasada la
+  // medianoche: con el corte a las 6:00, lo registrado a la 1:00 cuenta en la jornada de
+  // la noche anterior, que es la que se está cerrando. Con el corte a medianoche esos
+  // movimientos caían en el día siguiente y el cierre tardío los borraba. Un cliente lo
+  // cambia con APP_DAY_START_HOUR.
+  dayStartHour: parseDayStartHour(process.env.APP_DAY_START_HOUR),
   brand: {
     name: process.env.NEXT_PUBLIC_BRAND_NAME ?? "Inventario",
     logoUrl: process.env.NEXT_PUBLIC_BRAND_LOGO ?? null,
@@ -27,3 +33,9 @@ export const config = {
     dailyInventory: process.env.NEXT_PUBLIC_FEATURE_DAILY_INV === "true",
   },
 } as const;
+
+/** APP_DAY_START_HOUR: entero de 0 a 12. Vacío o inválido = 6. */
+function parseDayStartHour(raw: string | undefined): number {
+  const n = Number(raw?.trim());
+  return raw?.trim() && Number.isInteger(n) && n >= 0 && n <= 12 ? n : 6;
+}

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { businessDayStart } from "@/lib/dates";
+import { businessDayRange, businessDayStart } from "@/lib/dates";
 
 type Db = Pick<typeof prisma, "product" | "stockMovement">;
 
@@ -33,4 +33,30 @@ export async function openingStocks(
   ]);
   const netToday = new Map(sums.map((s) => [s.productId, s._sum.quantity ?? 0]));
   return new Map(products.map((p) => [p.id, p.currentStock - (netToday.get(p.id) ?? 0)]));
+}
+
+/**
+ * Neto de los movimientos manuales (source = null) registrados DESPUÉS del día de negocio
+ * `date`, por producto.
+ *
+ * Una jornada se puede cerrar tarde: el restaurante trabaja pasada la medianoche y para
+ * el sistema esos movimientos ya son del día siguiente. El conteo final describe cómo
+ * terminó el día `date`, así que el cierre debe dejar el stock en ese conteo MÁS lo que
+ * se registró después, no pisarlo. Sin esto, cerrar la jornada de ayer después de
+ * registrar una entrada hoy borraba esa entrada con el ajuste del cierre, y la apertura
+ * de hoy mostraba un stock de inicio negativo (stock actual − la entrada de hoy).
+ */
+export async function laterManualNet(
+  productIds: string[],
+  date: string,
+  db: Pick<typeof prisma, "stockMovement"> = prisma
+): Promise<Map<string, number>> {
+  if (productIds.length === 0) return new Map();
+  const { end } = businessDayRange(date);
+  const sums = await db.stockMovement.groupBy({
+    by: ["productId"],
+    where: { productId: { in: productIds }, source: null, createdAt: { gt: end } },
+    _sum: { quantity: true },
+  });
+  return new Map(sums.map((s) => [s.productId, s._sum.quantity ?? 0]));
 }
