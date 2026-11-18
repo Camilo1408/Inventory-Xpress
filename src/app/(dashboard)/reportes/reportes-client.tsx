@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { formatStock } from "@/lib/utils";
 import { TrendingUp, TrendingDown, Package, Search } from "lucide-react";
+import { Pagination, usePagination } from "@/components/ui/pagination";
 
 interface Category { id: string; name: string }
 
@@ -75,6 +76,10 @@ export function ReportesClient({ categories }: { categories: Category[] }) {
     if (search.trim() && !r.name.toLowerCase().includes(search.trim().toLowerCase())) return false;
     return true;
   });
+
+  // La tabla se pagina; las tarjetas y el conteo usan siempre la lista filtrada completa.
+  // Un filtro nuevo vuelve a la primera página.
+  const pager = usePagination(filtered, [period, categoryFilter, subcategoryFilter, statusFilter, search].join("|"));
 
   const withMovements = filtered.filter((r) => r.entries > 0 || r.exits > 0).length;
   const withoutStock  = filtered.filter((r) => r.active && r.currentStock <= 0).length;
@@ -209,10 +214,10 @@ export function ReportesClient({ categories }: { categories: Category[] }) {
               {rows.length === 0 ? "No hay productos registrados" : "Ningún producto coincide con los filtros seleccionados"}
             </div>
           ) : (
-            filtered.map((row) => (
+            pager.items.map((row) => (
               <div key={row.id} className={`px-4 py-3 ${!row.active ? "opacity-60" : ""}`}>
                 <div className="flex items-start justify-between gap-2">
-                  <span className="text-sm font-medium text-slate-800 break-words">{row.name}</span>
+                  <span className="text-sm font-medium text-slate-800 break-words line-clamp-2" title={row.name}>{row.name}</span>
                   {row.active
                     ? <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs shrink-0">Activo</Badge>
                     : <Badge className="bg-slate-100 text-slate-400 border-0 text-xs shrink-0">Inactivo</Badge>
@@ -265,14 +270,14 @@ export function ReportesClient({ categories }: { categories: Category[] }) {
                   </td>
                 </tr>
               ) : (
-                filtered.map((row) => (
+                pager.items.map((row) => (
                   <tr
                     key={row.id}
                     className={`transition-colors hover:bg-slate-50 ${!row.active ? "opacity-60" : ""}`}
                   >
                     {/* Producto */}
-                    <td className="px-4 py-3 text-sm font-medium text-slate-800 whitespace-nowrap">
-                      {row.name}
+                    <td className="px-4 py-3 text-sm font-medium text-slate-800">
+                      <span className="min-w-[12rem] max-w-[18rem] line-clamp-2 break-words" title={row.name}>{row.name}</span>
                     </td>
 
                     {/* Categoría */}
@@ -324,6 +329,19 @@ export function ReportesClient({ categories }: { categories: Category[] }) {
             </tbody>
           </table>
         </div>
+
+        {!loading && (
+          <Pagination
+            className="px-4 py-3 border-t border-slate-200"
+            page={pager.page}
+            totalPages={pager.totalPages}
+            total={pager.total}
+            start={pager.start}
+            perPage={pager.perPage}
+            onPageChange={pager.setPage}
+            onPerPageChange={pager.setPerPage}
+          />
+        )}
       </div>
     </div>
   );

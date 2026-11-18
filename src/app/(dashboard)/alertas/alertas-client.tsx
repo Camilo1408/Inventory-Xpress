@@ -169,7 +169,9 @@ export function AlertasClient({ alerts, bottleAlerts }: { alerts: AlertItem[]; b
                     <tbody className="divide-y divide-slate-100">
                       {numericItems.map(({ data: a }) => (
                         <tr key={a.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-4 py-3 text-sm font-medium text-slate-800">{a.name}</td>
+                          <td className="px-4 py-3 text-sm font-medium text-slate-800">
+                            <span className="min-w-[12rem] max-w-[18rem] line-clamp-2 break-words" title={a.name}>{a.name}</span>
+                          </td>
                           <td className="px-4 py-3 text-right text-sm tabular-nums font-semibold text-slate-800">
                             {formatStock(a.currentStock, a.unit)}
                           </td>
