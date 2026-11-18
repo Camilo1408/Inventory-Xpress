@@ -6,7 +6,7 @@ import { audit } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/lib/config";
 import { businessToday, businessDayRange } from "@/lib/dates";
-import { openingStocks } from "@/lib/daily-opening";
+import { laterManualNet, openingStocks } from "@/lib/daily-opening";
 import { z } from "zod";
 import { parseBody, parseValue } from "@/lib/api-body";
 
@@ -96,6 +96,10 @@ export async function GET(req: NextRequest) {
     select: { productId: true, type: true, quantity: true },
   });
 
+  // Movimientos registrados después del día (la jornada se cierra tarde): la pantalla de
+  // cierre los muestra aparte para que no se incluyan en el conteo final.
+  const later = await laterManualNet(inventory.items.map((i) => i.productId), date);
+
   const itemsWithCalc = inventory.items.map((item) => {
     const prods    = movements.filter((m) => m.productId === item.productId);
     const entries  = prods
@@ -106,7 +110,8 @@ export async function GET(req: NextRequest) {
       .reduce((s, m) => s + Math.abs(m.quantity), 0);
     const expected = item.initialCount + entries - exits;
     const discrepancy = item.finalCount !== null ? item.finalCount - expected : null;
-    return { ...item, entries, exits, expected, discrepancy };
+    const laterNet = later.get(item.productId) ?? 0;
+    return { ...item, entries, exits, expected, discrepancy, laterNet };
   });
 
   return NextResponse.json({ inventory: { ...inventory, items: itemsWithCalc } });

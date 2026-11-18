@@ -276,6 +276,91 @@ describe("Cierre de jornada", () => {
   });
 });
 
+describe("Cierre tardío: la jornada de ayer se cierra después de medianoche (RN-I01, RN-I02)", () => {
+  // Para el sistema el día cambia a medianoche, pero el restaurante sigue trabajando. Los
+  // movimientos que se registran entonces son del día siguiente y no van en el conteo final
+  // de ayer: el cierre debe dejarlos encima del stock contado, no borrarlos.
+  const d = new Date(`${today}T12:00:00`);
+  d.setDate(d.getDate() - 1);
+  const ayer = d.toISOString().slice(0, 10);
+  const openAyer = async (categoryId: string, items: unknown[]) => {
+    const res = await open(categoryId, items, ayer);
+    expect(res.status).toBe(201);
+    return (await res.json()).inventory.id as string;
+  };
+
+  it("una entrada registrada después de medianoche sobrevive al cierre de ayer y la apertura de hoy no queda negativa", async () => {
+    // Caso real: Stella con 4 botellas; pasada la medianoche llegan 6; luego se cierra ayer contando 4.
+    await prisma.product.update({ where: { id: a.id }, data: { currentStock: 4 } });
+    const id = await openAyer(cocina.id, [{ productId: a.id, initialCount: 4 }]);
+    expect((await move({ productId: a.id, type: "ENTRY", quantity: 6 })).status).toBe(201);
+
+    const res = await close(id, [{ productId: a.id, finalCount: 4 }]);
+    expect(res.status).toBe(200);
+
+    // Antes: el cierre dejaba el stock en 4 con un ajuste de −6 y la apertura mostraba −2.
+    expect(await stockOf(a.id)).toBe(10);
+    expect(await autoMovements(a.id)).toHaveLength(0);
+    expect((await openingStocks([a.id], today)).get(a.id)).toBe(4);
+    await expectLedger(a.id, 4);
+  });
+
+  it("una salida registrada después de medianoche tampoco se borra ni se cuenta dos veces", async () => {
+    const id = await openAyer(cocina.id, [{ productId: a.id, initialCount: 10 }]);
+    await move({ productId: a.id, type: "EXIT", quantity: 3 }); // hoy
+
+    // Ayer terminó con 9: falta 1, que sale como salida no registrada de ayer.
+    const res = await close(id, [{ productId: a.id, finalCount: 9 }]);
+    expect(res.status).toBe(200);
+    expect(await stockOf(a.id)).toBe(6);
+    expect((await autoMovements(a.id)).map((m) => [m.source, m.quantity])).toEqual([["daily_nr_exit", -1]]);
+    expect((await openingStocks([a.id], today)).get(a.id)).toBe(9);
+    await expectLedger(a.id, 10);
+  });
+
+  it("recerrar la jornada de ayer sigue respetando lo registrado después", async () => {
+    const id = await openAyer(cocina.id, [{ productId: a.id, initialCount: 10 }]);
+    await move({ productId: a.id, type: "ENTRY", quantity: 6 });
+    await close(id, [{ productId: a.id, finalCount: 8 }]);
+    expect(await stockOf(a.id)).toBe(14);
+
+    expect((await patch(id, { action: "reopen", reason: "Recuento" })).status).toBe(200);
+    await close(id, [{ productId: a.id, finalCount: 7 }]);
+    expect(await stockOf(a.id)).toBe(13);
+    expect((await openingStocks([a.id], today)).get(a.id)).toBe(7);
+    await expectLedger(a.id, 10);
+  });
+
+  it("la jornada de ayer informa lo registrado después, para no contarlo", async () => {
+    await openAyer(cocina.id, [{ productId: a.id, initialCount: 10 }]);
+    await move({ productId: a.id, type: "ENTRY", quantity: 6 });
+    const res = await getDaily(nextReq("GET", undefined, `http://localhost/api/daily-inventory?date=${ayer}&categoryId=${cocina.id}`));
+    const [item] = (await res.json()).inventory.items;
+    expect(item).toMatchObject({ entries: 0, expected: 10, laterNet: 6 });
+  });
+
+  it("[RN-I04] licor: una botella que sale después de medianoche se descuenta de la reserva contada", async () => {
+    const id = await openAyer(barra.id, [{ productId: ron.id, initialCount: 3 }]);
+    expect((await move({ productId: ron.id, type: "EXIT", quantity: 1 })).status).toBe(201);
+    const res = await close(id, [{ productId: ron.id, bottleLevel: "half", reserveBottles: 2 }]);
+    expect(res.status).toBe(200);
+    const ronAhora = await prisma.product.findUniqueOrThrow({ where: { id: ron.id } });
+    expect(ronAhora).toMatchObject({ bottleLevel: "half", reserveBottles: 1 });
+    expect(ronAhora.currentStock).toBeCloseTo(2, 9);
+    await expectLedger(ron.id, 3);
+  });
+
+  it("[NEG] licor: si después salió más de lo que el conteo deja en reserva, el cierre se rechaza sin tocar nada", async () => {
+    const id = await openAyer(barra.id, [{ productId: ron.id, initialCount: 3 }]);
+    await move({ productId: ron.id, type: "EXIT", quantity: 2 });
+    const res = await close(id, [{ productId: ron.id, bottleLevel: "half", reserveBottles: 1 }]);
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/Ron/);
+    expect((await prisma.dailyInventory.findUniqueOrThrow({ where: { id } })).status).toBe("open");
+    expect(await autoMovements(ron.id)).toHaveLength(0);
+  });
+});
+
 describe("Cierre de licores por nivel de botella (RN-I04)", () => {
   it("[RN-I04] cerrar con el estado actual no genera movimiento", async () => {
     const id = await openId(barra.id, [{ productId: ron.id, bottleLevel: "half", reserveBottles: 2 }]);

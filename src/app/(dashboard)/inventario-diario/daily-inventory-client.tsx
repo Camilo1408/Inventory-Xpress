@@ -69,6 +69,8 @@ interface InventoryItem {
   bottleLevel?: string | null;
   reserveBottles?: number | null;
   shotsCopeo?: boolean;
+  /** Neto de movimientos registrados DESPUÉS del día de la jornada (cierre tardío). */
+  laterNet?: number;
 }
 
 interface DailyInventory {
@@ -391,6 +393,18 @@ function TodayMovesHint({ product, block }: { product: Product; block?: boolean 
   return (
     <span className={`${block ? "block " : ""}text-[11px] text-blue-600`}>
       Hoy {net > 0 ? "+" : ""}{formatStock(net, product.unit)} en movimientos
+    </span>
+  );
+}
+
+// Movimientos registrados después del día de la jornada (se cierra tarde, p. ej. pasada la
+// medianoche). No van en el conteo final: el cierre los deja encima del stock contado.
+function LaterMovesHint({ item }: { item: InventoryItem }) {
+  const net = item.laterNet ?? 0;
+  if (Math.abs(net) <= 0.001) return null;
+  return (
+    <span className="block text-[11px] font-normal text-amber-700">
+      {net > 0 ? "+" : ""}{formatStock(net, item.product.unit)} registrados después de este día: no los incluyas en el conteo
     </span>
   );
 }
@@ -1346,6 +1360,7 @@ function OpenView({
               >
                 <div className="mb-3">
                   <p className="font-medium text-slate-800 truncate">{r.item.product.name}</p>
+                  <LaterMovesHint item={r.item} />
                   <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
                     {isShotsCopeoTrackedSlug(r.item.product.category?.slug) && (
                       <ShotsCopeoToggle
@@ -1470,6 +1485,7 @@ function OpenView({
                           />
                         )}
                       </div>
+                      <LaterMovesHint item={r.item} />
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-slate-600">
                       {formatStock(r.item.initialCount, r.item.product.unit)}

@@ -6,7 +6,7 @@ import { audit } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/lib/config";
 import { businessDayRange } from "@/lib/dates";
-import { openingStocks } from "@/lib/daily-opening";
+import { laterManualNet, openingStocks } from "@/lib/daily-opening";
 import { z } from "zod";
 import { parseBody, parseValue } from "@/lib/api-body";
 
@@ -285,7 +285,7 @@ export async function PATCH(
   // Resolver qué productos del inventario son de control por botella (slug de su subcategoría).
   const invProducts = await prisma.product.findMany({
     where: { id: { in: inventory.items.map((i) => i.productId) } },
-    select: { id: true, category: { select: { slug: true } } },
+    select: { id: true, name: true, category: { select: { slug: true } } },
   });
   const bottleProductIds = new Set(
     invProducts.filter((p) => isBottleTrackedSlug(p.category?.slug)).map((p) => p.id)
@@ -351,6 +351,38 @@ export async function PATCH(
   });
   const stockByProduct = new Map(stockRows.map((p) => [p.id, p.currentStock]));
 
+  // Movimientos manuales registrados DESPUÉS del día de la jornada (cierre tardío, p. ej.
+  // pasada la medianoche). No forman parte del conteo final: quedan encima del stock.
+  const later = await laterManualNet(inventory.items.map((i) => i.productId), inventory.date);
+
+  // Licores por botella: lo registrado después se suma a la reserva contada. Si salió más
+  // de lo que el conteo deja en reserva, o hubo un ajuste de nivel después, el cierre no
+  // puede conciliarlo solo: se rechaza en vez de borrar esos movimientos.
+  const laterBottleAdjusts = await prisma.stockMovement.findMany({
+    where: {
+      productId: { in: [...bottleProductIds] },
+      source: "bottle_adjust",
+      createdAt: { gt: businessDayRange(inventory.date).end },
+    },
+    select: { productId: true },
+  });
+  const bottleConflict = finalCounts.find((fc) => {
+    if (!bottleProductIds.has(fc.productId)) return false;
+    if (laterBottleAdjusts.some((m) => m.productId === fc.productId)) return true;
+    return (fc.reserveBottles ?? 0) + (later.get(fc.productId) ?? 0) < 0;
+  });
+  if (bottleConflict) {
+    const nombre = invProducts.find((p) => p.id === bottleConflict.productId)?.name ?? "un licor";
+    return NextResponse.json(
+      {
+        error:
+          `No se puede cerrar: ${nombre} tiene movimientos registrados después del ${inventory.date} ` +
+          `que no cuadran con el conteo. Revisa esos movimientos en el historial antes de cerrar.`,
+      },
+      { status: 409 }
+    );
+  }
+
   // Pre-cálculo de NR (manual + auto-derivado) y validación de la justificación.
   const computed = finalCounts
     .map((fc) => ({ fc, item: inventory.items.find((i) => i.productId === fc.productId) }))
@@ -403,7 +435,9 @@ export async function PATCH(
 
       // Stock base = stock actual SIN los movimientos de cierres previos de este ítem.
       // Garantiza idempotencia al recerrar y que el stock final == conteo final.
-      const baseStock = (stockByProduct.get(item.productId) ?? 0) - (autoSumByItem.get(item.id) ?? 0);
+      // Sin los movimientos registrados después del día: esos quedan encima del conteo.
+      const baseStock =
+        (stockByProduct.get(item.productId) ?? 0) - (autoSumByItem.get(item.id) ?? 0) - (later.get(item.productId) ?? 0);
       const residual = finalCount - baseStock - e + x;
 
       await tx.dailyInventoryItem.update({
@@ -480,13 +514,17 @@ export async function PATCH(
       if (!item) continue;
       const level = isBottleLevel(fc.bottleLevel) ? fc.bottleLevel : null;
       const reserve = fc.reserveBottles ?? 0;
-      // Mantener currentStock sincronizado: reserva + 1 si hay botella abierta.
-      const newStock = bottleStock(level, reserve);
+      // Estado al final del día según el conteo: reserva + 1 si hay botella abierta.
+      const endOfDayStock = bottleStock(level, reserve);
+      // Lo registrado después del día (entradas y salidas de botellas enteras) se suma a
+      // la reserva contada; arriba ya se rechazó si no alcanza.
+      const laterNet = later.get(fc.productId) ?? 0;
+      const newStock = endOfDayStock + laterNet;
 
-      // Stock base = actual SIN el ajuste de un cierre previo de este ítem
-      // (idempotencia al recerrar, igual que baseStock en los numéricos).
-      const baseStock = (stockByProduct.get(fc.productId) ?? 0) - (autoSumByItem.get(item.id) ?? 0);
-      const qty = newStock - baseStock;
+      // Stock base = actual SIN el ajuste de un cierre previo de este ítem (idempotencia al
+      // recerrar) y sin lo registrado después del día, igual que en los numéricos.
+      const baseStock = (stockByProduct.get(fc.productId) ?? 0) - (autoSumByItem.get(item.id) ?? 0) - laterNet;
+      const qty = endOfDayStock - baseStock;
       const existing = autoByKey.get(`${item.id}:daily_close_bottle`);
       const note = `Cierre inventario diario ${inventory.date}: nivel ${level ?? "sin botella"}, reserva ${reserve}`;
 
@@ -516,7 +554,7 @@ export async function PATCH(
       });
       await tx.product.update({
         where: { id: fc.productId },
-        data: { bottleLevel: level, reserveBottles: reserve, currentStock: newStock },
+        data: { bottleLevel: level, reserveBottles: reserve + laterNet, currentStock: newStock },
       });
     }
 
