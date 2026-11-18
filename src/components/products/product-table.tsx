@@ -4,9 +4,10 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Pencil, Package, Search, PowerOff, Power, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Pencil, Package, Search, PowerOff, Power, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Pagination } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { getStockStatus, formatStock } from "@/lib/utils";
@@ -398,8 +399,11 @@ export function ProductTable({ products, rootCategories, canManage, canHardDelet
                           <Package className="w-4 h-4 text-slate-400" />
                         </div>
                       )}
-                      <div>
-                        <span className={`text-sm font-medium ${p.active ? "text-slate-800" : "text-slate-400 line-through"}`}>
+                      <div className="min-w-0">
+                        <span
+                          title={p.name}
+                          className={`min-w-[12rem] max-w-[18rem] line-clamp-2 break-words text-sm font-medium ${p.active ? "text-slate-800" : "text-slate-400 line-through"}`}
+                        >
                           {p.name}
                         </span>
                         {!p.active && (
@@ -495,51 +499,17 @@ export function ProductTable({ products, rootCategories, canManage, canHardDelet
       </div>
 
       {/* Paginación */}
-      {total > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <span>Por página</span>
-            <Select value={String(perPage)} onValueChange={(v) => { setPerPage(Number(v)); setPage(1); }}>
-              <SelectTrigger className="w-[72px] h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PER_PAGE_OPTIONS.map((n) => (
-                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <span className="tabular-nums">
-              {start + 1}–{Math.min(start + perPage, total)} de {total}
-            </span>
-            <div className="flex items-center gap-1">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-9 px-2"
-                disabled={currentPage <= 1}
-                onClick={() => setPage(currentPage - 1)}
-                aria-label="Página anterior"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <span className="px-1 tabular-nums text-slate-600">{currentPage}/{totalPages}</span>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-9 px-2"
-                disabled={currentPage >= totalPages}
-                onClick={() => setPage(currentPage + 1)}
-                aria-label="Página siguiente"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Pagination
+        className="mt-4"
+        page={currentPage}
+        totalPages={totalPages}
+        total={total}
+        start={start}
+        perPage={perPage}
+        options={PER_PAGE_OPTIONS}
+        onPageChange={setPage}
+        onPerPageChange={(n) => { setPerPage(n); setPage(1); }}
+      />
 
       <ConfirmDialog
         open={!!actionTarget}

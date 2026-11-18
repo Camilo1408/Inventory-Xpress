@@ -137,7 +137,9 @@ export default async function HistorialPage({
                 <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
                   {formatDate(m.createdAt)}
                 </td>
-                <td className="px-4 py-3 text-sm font-medium text-slate-800">{m.product.name}</td>
+                <td className="px-4 py-3 text-sm font-medium text-slate-800">
+                  <span className="min-w-[12rem] max-w-[18rem] line-clamp-2 break-words" title={m.product.name}>{m.product.name}</span>
+                </td>
                 <td className="px-4 py-3 text-center">
                   <Badge className={resolveBadge(m.type, m.source)}>
                     {resolveLabel(m.type, m.source)}
