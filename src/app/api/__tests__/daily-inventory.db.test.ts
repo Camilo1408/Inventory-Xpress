@@ -289,6 +289,23 @@ describe("Cierre tardío: la jornada de ayer se cierra después de medianoche (R
     return (await res.json()).inventory.id as string;
   };
 
+  it("con el corte a las 6:00, una entrada registrada de madrugada cuenta en la jornada de la noche anterior", async () => {
+    const id = await openAyer(cocina.id, [{ productId: a.id, initialCount: 10 }]);
+    // Una entrada a las 5:00 de hoy (antes del corte): es de la jornada de ayer.
+    const cincoAm = new Date(businessDayStart(today).getTime() - 3_600_000);
+    await prisma.stockMovement.create({
+      data: { productId: a.id, type: "ENTRY", quantity: 6, userId: "u-test", userName: "Prueba", createdAt: cincoAm },
+    });
+    await prisma.product.update({ where: { id: a.id }, data: { currentStock: { increment: 6 } } });
+
+    const res = await close(id, [{ productId: a.id, finalCount: 16 }]);
+    expect(res.status).toBe(200);
+    expect((await res.json()).inventory.items[0]).toMatchObject({ entries: 6, expected: 16, discrepancy: 0 });
+    expect(await autoMovements(a.id)).toHaveLength(0);
+    expect(await stockOf(a.id)).toBe(16);
+    expect((await openingStocks([a.id], today)).get(a.id)).toBe(16);
+  });
+
   it("una entrada registrada después de medianoche sobrevive al cierre de ayer y la apertura de hoy no queda negativa", async () => {
     // Caso real: Stella con 4 botellas; pasada la medianoche llegan 6; luego se cierra ayer contando 4.
     await prisma.product.update({ where: { id: a.id }, data: { currentStock: 4 } });

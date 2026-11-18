@@ -285,6 +285,7 @@ Plantilla en `.env.example`. Copiar a `.env` (o `.env.local`) y completar:
 | `BLOB_READ_WRITE_TOKEN` | opcional | Token de Vercel Blob (subida de imágenes). |
 | `AUTH_COOKIE_DOMAIN` | integrated/prod | Dominio de la cookie de sesión compartida con Nómina (ej. `.cucinadeifiori.com`). Lo lee `src/lib/auth.config.ts`. |
 | `APP_TIMEZONE` | opcional | Zona horaria IANA del negocio para el cálculo de la jornada (def. `America/Bogota`). |
+| `APP_DAY_START_HOUR` | opcional | Hora (0–12) a la que empieza la jornada operativa (def. `6`). Lo registrado antes de esa hora cuenta en la jornada de la noche anterior. |
 | `NEXT_PUBLIC_BRAND_NAME` | opcional | Nombre de marca mostrado (def. `Inventario`). |
 | `NEXT_PUBLIC_BRAND_LOGO` | opcional | URL del logo de marca. |
 | `NEXT_PUBLIC_FEATURE_COCKTAILS` | opcional | `true` activa el control por nivel de botella (**OFF** por defecto). |
